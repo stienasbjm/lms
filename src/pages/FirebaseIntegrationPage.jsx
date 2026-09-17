@@ -23,7 +23,7 @@ import {
   Lock,
   Layers
 } from 'lucide-react';
-import { showSuccessAlert, showErrorAlert, showConfirmDialog } from '../utils/alert';
+import { showSuccessAlert, showErrorAlert, showConfirmDialog, customSwal } from '../utils/alert';
 
 export default function FirebaseIntegrationPage() {
   const { user } = useAuth();
@@ -36,7 +36,7 @@ export default function FirebaseIntegrationPage() {
   const [syncLogs, setSyncLogs] = useState([]);
   const [copiedRules, setCopiedRules] = useState(null);
 
-  // Jika bukan super admin, cegah akses
+  // Akses halaman ini dibatasi hanya untuk Super Admin
   if (user?.role !== 'SUPER_ADMIN') {
     return (
       <div className="p-8 text-center bg-white rounded-2xl border border-rose-200 shadow-sm max-w-lg mx-auto">
@@ -49,6 +49,7 @@ export default function FirebaseIntegrationPage() {
     );
   }
 
+  // Handle parsing JSON paste dari Firebase Console
   const handleJsonPaste = (e) => {
     const text = e.target.value;
     setRawJson(text);
@@ -58,7 +59,7 @@ export default function FirebaseIntegrationPage() {
         setConfig(parsed);
       }
     } catch (err) {
-      // JSON in progress
+      // Tunggu input lengkap
     }
   };
 
@@ -82,7 +83,7 @@ export default function FirebaseIntegrationPage() {
     }
   };
 
-  // Uji koneksi live ke Firebase
+  // Uji koneksi live ke Firebase SDK
   const handleTestConnection = async () => {
     setTesting(true);
     setTestResult(null);
@@ -121,7 +122,47 @@ export default function FirebaseIntegrationPage() {
       });
       showSuccessAlert("Sinkronisasi Selesai", "Inisialisasi koleksi Cloud Firestore selesai dengan sukses!");
     } catch (err) {
-      showErrorAlert("Gagal Sinkronisasi", err.message);
+      const errMsg = (err.message || '').toLowerCase();
+      if (errMsg.includes('permission') || errMsg.includes('izin')) {
+        customSwal.fire({
+          icon: 'warning',
+          title: 'Izin Firestore Masih Terkunci',
+          html: `
+            <div class="text-left space-y-3 text-xs text-slate-700 leading-relaxed">
+              <p>Firebase menolak sinkronisasi karena <strong>Aturan Keamanan (Security Rules)</strong> di Firebase Console masih terkunci (<em>Missing or insufficient permissions</em>).</p>
+              
+              <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 space-y-1">
+                <div class="font-bold">Langkah Cepat Membuka Akses (Hanya 1 Menit):</div>
+                <ol class="list-decimal pl-4 space-y-1">
+                  <li>Buka tab <strong>Rules</strong> di Firestore Database Firebase Console</li>
+                  <li>Ubah aturan menjadi:</li>
+                </ol>
+              </div>
+
+              <pre class="p-3 bg-slate-900 text-emerald-400 rounded-xl text-[11px] font-mono overflow-x-auto">rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}</pre>
+
+              <p>3. Klik tombol <strong>Publish (Publikasikan)</strong>.</p>
+              <p>4. Setelah dipublikasikan, klik tombol <strong>Sinkronkan Database Sekarang</strong> lagi.</p>
+            </div>
+          `,
+          confirmButtonText: 'Buka Firebase Console Rules',
+          showCancelButton: true,
+          cancelButtonText: 'Tutup'
+        }).then((result) => {
+          if (result.isConfirmed) {
+            window.open(`https://console.firebase.google.com/project/${config.projectId}/firestore/rules`, '_blank');
+          }
+        });
+      } else {
+        showErrorAlert("Gagal Sinkronisasi", err.message);
+      }
     } finally {
       setSyncing(false);
     }
@@ -131,7 +172,16 @@ export default function FirebaseIntegrationPage() {
 service cloud.firestore {
   match /databases/{database}/documents {
     match /{document=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if true;
+    }
+  }
+}`;
+
+  const storageRulesText = `rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if true;
     }
   }
 }`;
@@ -392,18 +442,18 @@ service cloud.firestore {
             </ol>
           </div>
 
-          {/* Salin Security Rules */}
+          {/* Salin Security Rules Firestore */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3 text-xs">
             <h4 className="font-bold text-slate-800 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
               <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              Aturan Keamanan (Rules)
+              1. Aturan Keamanan Firestore (Wajib)
             </h4>
             <p className="text-[11px] text-slate-500">
-              Salin aturan ini ke tab <em>Rules</em> pada Cloud Firestore di Firebase Console:
+              Salin aturan ini ke tab <strong>Firestore Database &gt; Rules</strong> di Firebase Console agar sinkronisasi tidak terhalang <em>permission-denied</em>:
             </p>
 
             <div className="relative">
-              <pre className="p-3 bg-slate-900 text-slate-200 rounded-xl font-mono text-[11px] overflow-x-auto">
+              <pre className="p-3 bg-slate-900 text-emerald-400 rounded-xl font-mono text-[11px] overflow-x-auto">
                 {firestoreRulesText}
               </pre>
               <button
@@ -412,6 +462,30 @@ service cloud.firestore {
               >
                 {copiedRules === 'firestore' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
                 <span>{copiedRules === 'firestore' ? 'Tersalin' : 'Salin'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Salin Security Rules Storage */}
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3 text-xs">
+            <h4 className="font-bold text-slate-800 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-blue-600" />
+              2. Aturan Keamanan Cloud Storage
+            </h4>
+            <p className="text-[11px] text-slate-500">
+              Salin aturan ini ke tab <strong>Storage &gt; Rules</strong> untuk upload materi kuliah & tugas:
+            </p>
+
+            <div className="relative">
+              <pre className="p-3 bg-slate-900 text-blue-300 rounded-xl font-mono text-[11px] overflow-x-auto">
+                {storageRulesText}
+              </pre>
+              <button
+                onClick={() => handleCopyText(storageRulesText, 'storage')}
+                className="absolute top-2 right-2 p-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-[10px] font-bold flex items-center gap-1"
+              >
+                {copiedRules === 'storage' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                <span>{copiedRules === 'storage' ? 'Tersalin' : 'Salin'}</span>
               </button>
             </div>
           </div>

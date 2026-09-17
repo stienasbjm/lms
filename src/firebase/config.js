@@ -11,22 +11,25 @@ import {
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
-// Default configuration placeholder (Mendukung .env maupun default)
+// Default configuration resmi Firebase LMS STIE Nasional Banjarmasin
 const DEFAULT_FIREBASE_CONFIG = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyDummyKeyForPreviewPurposeOnly12345",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyDITlobzgm52tNwHUa7j5Z070DY4vJOJBw",
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "lms-stienas.firebaseapp.com",
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "lms-stienas",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "lms-stienas.appspot.com",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "123456789012",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:123456789012:web:abcdef123456"
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "lms-stienas.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "1039609038510",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:1039609038510:web:18536257413fe47b448f3f"
 };
 
-// Ambil konfigurasi dari localStorage jika ada, atau fallback ke DEFAULT
+// Ambil konfigurasi dari localStorage jika ada, atau fallback ke DEFAULT resmi
 export function getSavedFirebaseConfig() {
   try {
     const saved = localStorage.getItem('STIE_LMS_FIREBASE_CONFIG');
     if (saved) {
-      return JSON.parse(saved);
+      const parsed = JSON.parse(saved);
+      if (parsed && parsed.apiKey && !parsed.apiKey.includes('DummyKey')) {
+        return parsed;
+      }
     }
   } catch (e) {
     console.warn("Gagal membaca konfigurasi Firebase dari localStorage:", e);
