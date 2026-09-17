@@ -40,6 +40,7 @@ import {
   Check,
   Trash2
 } from 'lucide-react';
+import { showSuccessAlert, showErrorAlert, showSuccessToast, showErrorToast, showConfirmDialog } from '../utils/alert';
 
 export default function ClassDetailPage({ classId, onBack }) {
   const { user, isAdmin, isDosen, isMahasiswa } = useAuth();
@@ -130,22 +131,23 @@ export default function ClassDetailPage({ classId, onBack }) {
 
   const handleSaveMediaSubmit = async (e) => {
     e.preventDefault();
-    if (!isTaActive) return alert("Semester telah ditutup. Tindakan tidak diizinkan.");
+    if (!isTaActive) return showErrorToast("Semester telah ditutup. Tindakan tidak diizinkan.");
     try {
       await updateMeetingMedia(classId, activeMeetingNumber, mediaForm, user);
       setShowMediaModal(false);
+      showSuccessToast("Tautan ruang tatap muka daring diperbarui!");
       await loadClass();
     } catch (err) {
-      alert("Gagal memperbarui media daring: " + err.message);
+      showErrorAlert("Gagal Memperbarui Media", err.message);
     }
   };
 
   // Handler Sematkan Link Drive Bahan Ajar
   const handleUploadMaterialSubmit = async (e) => {
     e.preventDefault();
-    if (!isTaActive) return alert("Semester telah ditutup. Tindakan tidak diizinkan.");
+    if (!isTaActive) return showErrorToast("Semester telah ditutup. Tindakan tidak diizinkan.");
     if (!materialForm.judul || !materialForm.linkUrl) {
-      alert("Harap isi Judul Materi dan Tautan Link Drive.");
+      showErrorAlert("Data Belum Lengkap", "Harap isi Judul Materi dan Tautan Link Drive.");
       return;
     }
 
@@ -162,20 +164,29 @@ export default function ClassDetailPage({ classId, onBack }) {
 
       setShowUploadMaterialModal(false);
       setMaterialForm({ judul: '', linkUrl: '', fileType: 'link/drive', fileUrl: '' });
+      showSuccessToast("Materi Link Drive berhasil disematkan!");
       await loadClass();
     } catch (err) {
-      alert("Gagal menyematkan materi Link Drive: " + err.message);
+      showErrorAlert("Gagal Menyematkan Materi", err.message);
     }
   };
 
   const handleDeleteMaterial = async (materialId) => {
-    if (!isTaActive) return alert("Semester telah ditutup. Tindakan tidak diizinkan.");
-    if (!window.confirm("Apakah Anda yakin ingin menghapus materi ini dari pertemuan?")) return;
+    if (!isTaActive) return showErrorToast("Semester telah ditutup. Tindakan tidak diizinkan.");
+    const confirmed = await showConfirmDialog({
+      title: "Hapus Materi?",
+      text: "Apakah Anda yakin ingin menghapus materi bahan ajar ini dari pertemuan?",
+      confirmButtonText: "Ya, Hapus",
+      cancelButtonText: "Batal"
+    });
+    if (!confirmed) return;
+
     try {
       await deleteMeetingMaterial(classId, activeMeetingNumber, materialId, user);
+      showSuccessToast("Materi perkuliahan berhasil dihapus.");
       await loadClass();
     } catch (err) {
-      alert("Gagal menghapus materi: " + err.message);
+      showErrorAlert("Gagal Menghapus Materi", err.message);
     }
   };
 
@@ -197,22 +208,23 @@ export default function ClassDetailPage({ classId, onBack }) {
   };
 
   const handleSaveAttendance = async () => {
-    if (!isTaActive) return alert("Semester telah ditutup. Tindakan tidak diizinkan.");
+    if (!isTaActive) return showErrorToast("Semester telah ditutup. Tindakan tidak diizinkan.");
     try {
       await saveMeetingAttendance(classId, activeMeetingNumber, attendanceRecords, user);
       setShowAttendanceModal(false);
+      showSuccessToast("Rekap presensi pertemuan berhasil disimpan!");
       await loadClass();
     } catch (err) {
-      alert("Gagal menyimpan presensi: " + err.message);
+      showErrorAlert("Gagal Menyimpan Presensi", err.message);
     }
   };
 
   // Handler Pengumpulan Tugas dengan Sematkan Link File Dokumen (Hemat Space Drive)
   const handleTaskSubmit = async (e) => {
     e.preventDefault();
-    if (!isTaActive) return alert("Semester telah ditutup. Tindakan tidak diizinkan.");
+    if (!isTaActive) return showErrorToast("Semester telah ditutup. Tindakan tidak diizinkan.");
     if (!taskForm.fileUrl) {
-      alert("Harap masukkan tautan link dokumen / file tugas Anda.");
+      showErrorAlert("Tautan Tugas Diperlukan", "Harap masukkan tautan link dokumen Google Drive / OneDrive tugas Anda.");
       return;
     }
 
@@ -228,10 +240,10 @@ export default function ClassDetailPage({ classId, onBack }) {
 
       setShowTaskSubmitModal(false);
       setTaskForm({ judul: '', fileUrl: '', catatan: '' });
-      alert("Tugas berhasil disematkan dan dikumpulkan!");
+      showSuccessAlert("Tugas Terkumpul", "Tugas berhasil disematkan dan dikumpulkan!");
       await loadClass();
     } catch (err) {
-      alert("Gagal mengumpulkan tugas: " + err.message);
+      showErrorAlert("Gagal Mengumpulkan Tugas", err.message);
     }
   };
 
@@ -239,7 +251,7 @@ export default function ClassDetailPage({ classId, onBack }) {
   const handleSaveGrading = async (e) => {
     e.preventDefault();
     if (!showGradingModal) return;
-    if (!isTaActive) return alert("Semester telah ditutup. Tindakan tidak diizinkan.");
+    if (!isTaActive) return showErrorToast("Semester telah ditutup. Tindakan tidak diizinkan.");
 
     try {
       await gradeSubmission(
@@ -251,9 +263,10 @@ export default function ClassDetailPage({ classId, onBack }) {
         user
       );
       setShowGradingModal(null);
+      showSuccessToast("Nilai tugas mahasiswa berhasil disimpan!");
       await loadClass();
     } catch (err) {
-      alert("Gagal menyimpan penilaian: " + err.message);
+      showErrorAlert("Gagal Menyimpan Penilaian", err.message);
     }
   };
 
@@ -779,7 +792,7 @@ export default function ClassDetailPage({ classId, onBack }) {
                             {sub.nilai !== undefined ? (
                               <button
                                 onClick={() => {
-                                  if (!isTaActive) return alert("Semester ditutup, tidak dapat mengubah nilai.");
+                                  if (!isTaActive) return showErrorToast("Semester ditutup, tidak dapat mengubah nilai.");
                                   setShowGradingModal(sub);
                                   setGradingForm({ nilai: sub.nilai, feedback: sub.catatanDosen || '' });
                                 }}
@@ -790,7 +803,7 @@ export default function ClassDetailPage({ classId, onBack }) {
                             ) : (
                               <button
                                 onClick={() => {
-                                  if (!isTaActive) return alert("Semester ditutup, tidak dapat mengubah nilai.");
+                                  if (!isTaActive) return showErrorToast("Semester ditutup, tidak dapat mengubah nilai.");
                                   setShowGradingModal(sub);
                                   setGradingForm({ nilai: 85, feedback: '' });
                                 }}

@@ -23,6 +23,7 @@ import {
   Lock,
   Layers
 } from 'lucide-react';
+import { showSuccessAlert, showErrorAlert, showConfirmDialog } from '../utils/alert';
 
 export default function FirebaseIntegrationPage() {
   const { user } = useAuth();
@@ -61,14 +62,21 @@ export default function FirebaseIntegrationPage() {
     }
   };
 
-  const handleSaveConfig = (e) => {
+  const handleSaveConfig = async (e) => {
     e.preventDefault();
     saveFirebaseConfig(config);
-    alert("Konfigurasi Firebase berhasil disimpan! Aplikasi akan memuat ulang...");
+    await showSuccessAlert("Tersimpan", "Konfigurasi Firebase berhasil disimpan! Aplikasi akan memuat ulang...");
+    window.location.reload();
   };
 
-  const handleResetDefault = () => {
-    if (window.confirm("Kembalikan konfigurasi ke mode BaaS Demo Standar?")) {
+  const handleResetDefault = async () => {
+    const confirmed = await showConfirmDialog({
+      title: "Reset Konfigurasi?",
+      text: "Kembalikan konfigurasi ke mode BaaS Demo Standar?",
+      confirmButtonText: "Ya, Reset",
+      cancelButtonText: "Batal"
+    });
+    if (confirmed) {
       localStorage.removeItem('STIE_LMS_FIREBASE_CONFIG');
       window.location.reload();
     }
@@ -111,9 +119,9 @@ export default function FirebaseIntegrationPage() {
       const res = await syncCollectionsToLiveFirestore((msg, logs) => {
         setSyncLogs([...logs]);
       });
-      alert("Inisialisasi koleksi Cloud Firestore selesai dengan sukses!");
+      showSuccessAlert("Sinkronisasi Selesai", "Inisialisasi koleksi Cloud Firestore selesai dengan sukses!");
     } catch (err) {
-      alert("Gagal melakukan sinkronisasi: " + err.message);
+      showErrorAlert("Gagal Sinkronisasi", err.message);
     } finally {
       setSyncing(false);
     }

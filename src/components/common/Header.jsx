@@ -42,7 +42,7 @@ export default function Header() {
             {/* Logo & Kampus Branding */}
             <div className="flex items-center space-x-3">
               <img 
-                src="/logo-stienas.png" 
+                src={`${import.meta.env.BASE_URL}logo-stienas.png`} 
                 alt="Logo STIE Nasional Banjarmasin" 
                 className="w-10 h-10 object-contain drop-shadow-sm hover:scale-105 transition-transform" 
               />

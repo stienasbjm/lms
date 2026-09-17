@@ -38,6 +38,7 @@ import {
   Save,
   CheckCircle2
 } from 'lucide-react';
+import { showSuccessAlert, showErrorAlert, showSuccessToast, showErrorToast, showConfirmDialog } from '../utils/alert';
 
 export default function UserManagementPage() {
   const { user: currentUser, isSuperAdmin, isBaa } = useAuth();
@@ -167,7 +168,7 @@ export default function UserManagementPage() {
   const handleCreateSubmit = async (e) => {
     e.preventDefault();
     if (!createForm.name.trim() || !createForm.email.trim()) {
-      alert("Harap lengkapi nama dan email pengguna.");
+      showErrorAlert("Data Belum Lengkap", "Harap lengkapi nama dan email pengguna.");
       return;
     }
 
@@ -175,9 +176,9 @@ export default function UserManagementPage() {
       await createUser(createForm, currentUser);
       setShowCreateModal(false);
       await loadData();
-      alert(`Akun ${createForm.name} (${createForm.role}) berhasil ditambahkan!`);
+      showSuccessAlert("Akun Berhasil Dibuat", `Akun ${createForm.name} (${createForm.role}) berhasil ditambahkan ke dalam LMS!`);
     } catch (err) {
-      alert("Gagal menambahkan akun: " + err.message);
+      showErrorAlert("Gagal Menambahkan Akun", err.message);
     }
   };
 
@@ -186,7 +187,7 @@ export default function UserManagementPage() {
   // ==========================================
   const handleOpenManageModal = (target) => {
     if (!canManageUser(target)) {
-      alert("Anda tidak memiliki wewenang untuk mengelola akun ini.");
+      showErrorToast("Anda tidak memiliki wewenang untuk mengelola akun ini.");
       return;
     }
 
@@ -216,7 +217,7 @@ export default function UserManagementPage() {
     e.preventDefault();
     if (!selectedUser) return;
     if (!manageForm.name.trim() || !manageForm.email.trim()) {
-      alert("Nama dan email pengguna tidak boleh kosong.");
+      showErrorAlert("Data Tidak Boleh Kosong", "Nama dan email pengguna tidak boleh kosong.");
       return;
     }
 
@@ -250,9 +251,9 @@ export default function UserManagementPage() {
       setShowManageModal(false);
       setSelectedUser(null);
       await loadData();
-      alert(`Data akun ${payload.name} berhasil diperbarui!${payload.password ? ' (Kata sandi baru telah diterapkan)' : ''}`);
+      showSuccessAlert("Data Diperbarui", `Data akun ${payload.name} berhasil diperbarui!${payload.password ? ' (Kata sandi baru telah diterapkan)' : ''}`);
     } catch (err) {
-      alert("Gagal memperbarui akun: " + err.message);
+      showErrorAlert("Gagal Memperbarui Akun", err.message);
     } finally {
       setIsSaving(false);
     }
@@ -262,11 +263,11 @@ export default function UserManagementPage() {
   const handleConfirmDelete = async () => {
     if (!selectedUser) return;
     if (!canManageUser(selectedUser)) {
-      alert("Anda tidak memiliki wewenang untuk menghapus akun ini.");
+      showErrorToast("Anda tidak memiliki wewenang untuk menghapus akun ini.");
       return;
     }
     if (selectedUser.uid === currentUser?.uid) {
-      alert("Anda tidak dapat menghapus akun Anda sendiri.");
+      showErrorAlert("Aksi Ditolak", "Anda tidak dapat menghapus akun Anda sendiri.");
       return;
     }
 
@@ -276,9 +277,9 @@ export default function UserManagementPage() {
       setShowDeleteConfirm(false);
       setSelectedUser(null);
       await loadData();
-      alert(`Akun ${selectedUser.name} telah berhasil dihapus secara permanen.`);
+      showSuccessAlert("Akun Dihapus", `Akun ${selectedUser.name} telah berhasil dihapus secara permanen.`);
     } catch (err) {
-      alert("Gagal menghapus akun: " + err.message);
+      showErrorAlert("Gagal Menghapus Akun", err.message);
     }
   };
 

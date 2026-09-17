@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { batchImportData } from '../firebase/firestoreService';
 import { FileUp, CheckCircle, AlertCircle, Code, Copy, Sparkles } from 'lucide-react';
+import { showSuccessAlert, showErrorAlert } from '../utils/alert';
 
 export default function BatchImportPage({ onDone }) {
   const { user } = useAuth();
@@ -94,8 +95,9 @@ export default function BatchImportPage({ onDone }) {
       setImportSuccess(true);
       setJsonText('');
       setParsedData([]);
+      showSuccessAlert("Impor Berhasil", `${parsedData.length} data ${importType.toLowerCase()} berhasil disimpan ke dalam basis data LMS!`);
     } catch (err) {
-      alert("Gagal impor: " + err.message);
+      showErrorAlert("Gagal Impor Data", err.message);
     } finally {
       setLoading(false);
     }

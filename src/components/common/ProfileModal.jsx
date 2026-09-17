@@ -5,6 +5,7 @@ import {
   calculateAcademicStanding, 
   ANGKATAN_OPTIONS 
 } from '../../utils/studentNimHelper';
+import { showErrorAlert, showSuccessToast } from '../../utils/alert';
 import { 
   User, 
   X, 
@@ -46,12 +47,13 @@ export default function ProfileModal({ onClose }) {
     try {
       await updateUser(user.uid, form, user);
       updateCurrentUserProfile(form);
+      showSuccessToast("Profil berhasil diperbarui!");
       setSuccessMsg("Profil berhasil diperbarui!");
       setTimeout(() => {
         onClose();
-      }, 1200);
+      }, 1000);
     } catch (err) {
-      alert("Gagal menyimpan profil: " + err.message);
+      showErrorAlert("Gagal Menyimpan Profil", err.message);
     } finally {
       setSaving(false);
     }

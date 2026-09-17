@@ -3,9 +3,11 @@
  * Mengonversi data JSON/Array ke berkas CSV dan langsung mengunduh di browser pengguna.
  */
 
+import { showErrorToast } from './alert';
+
 export function exportToCSV(filename, headers, rows) {
   if (!rows || !rows.length) {
-    alert("Tidak ada data untuk diekspor!");
+    showErrorToast("Tidak ada data untuk diekspor!");
     return;
   }
 

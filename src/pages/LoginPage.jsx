@@ -169,7 +169,7 @@ export default function LoginPage({ onBackToLanding }) {
         <div className="text-center">
           <div className="inline-flex items-center justify-center mb-3">
             <img 
-              src="/logo-stienas.png" 
+              src={`${import.meta.env.BASE_URL}logo-stienas.png`} 
               alt="Logo STIE Nasional Banjarmasin" 
               className="w-16 h-16 object-contain drop-shadow-lg hover:scale-105 transition-transform" 
             />
