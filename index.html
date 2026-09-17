@@ -12,6 +12,13 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+      // Jika diakses via GitHub Pages pada root repositori (bukan localhost dev), otomatis alihkan ke folder docs/ yang memuat build produksi
+      if (window.location.hostname.endsWith('github.io') && !window.location.pathname.includes('/docs')) {
+        var cleanPath = window.location.pathname.replace(/\/$/, '');
+        window.location.replace(cleanPath + '/docs/' + window.location.search + window.location.hash);
+      }
+    </script>
   </head>
   <body class="bg-slate-50 text-slate-900 antialiased font-sans min-h-screen">
     <div id="root"></div>

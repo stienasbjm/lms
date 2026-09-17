@@ -312,47 +312,6 @@ export default function LoginPage({ onBackToLanding }) {
                     </>
                   )}
                 </button>
-
-                {/* 1-Click Autofill Pengujian (Bersih, Rapi & Elegan) */}
-                <div className="pt-3 mt-3 border-t border-slate-200/80">
-                  <p className="text-[11px] text-center text-slate-500 font-medium mb-2">
-                    ⚡ Klik tombol di bawah untuk pengisian akun instan:
-                  </p>
-                  <div className="grid grid-cols-2 gap-2 text-[11px]">
-                    <button
-                      type="button"
-                      onClick={() => { setIdentifier('admin@stienas.ac.id'); setPassword('admin123'); }}
-                      className="p-2 bg-slate-50 hover:bg-purple-50 text-slate-800 hover:text-purple-900 border border-slate-200 hover:border-purple-300 rounded-xl text-left transition-all flex flex-col"
-                    >
-                      <span className="font-bold text-xs flex items-center gap-1">👑 Super Admin</span>
-                      <span className="text-[10px] text-slate-500 font-mono">admin123</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setIdentifier('akademik@stienas.ac.id'); setPassword('akademik123'); }}
-                      className="p-2 bg-slate-50 hover:bg-indigo-50 text-slate-800 hover:text-indigo-900 border border-slate-200 hover:border-indigo-300 rounded-xl text-left transition-all flex flex-col"
-                    >
-                      <span className="font-bold text-xs flex items-center gap-1">🏛️ Admin BAA</span>
-                      <span className="text-[10px] text-slate-500 font-mono">akademik123</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setIdentifier('dosen@stienas.ac.id'); setPassword('dosen123'); }}
-                      className="p-2 bg-slate-50 hover:bg-blue-50 text-slate-800 hover:text-blue-900 border border-slate-200 hover:border-blue-300 rounded-xl text-left transition-all flex flex-col"
-                    >
-                      <span className="font-bold text-xs flex items-center gap-1">👨‍🏫 Dosen</span>
-                      <span className="text-[10px] text-slate-500 font-mono">dosen123</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setIdentifier('mahasiswa@stienas.ac.id'); setPassword('mhs123'); }}
-                      className="p-2 bg-slate-50 hover:bg-emerald-50 text-slate-800 hover:text-emerald-900 border border-slate-200 hover:border-emerald-300 rounded-xl text-left transition-all flex flex-col"
-                    >
-                      <span className="font-bold text-xs flex items-center gap-1">🎓 Mahasiswa</span>
-                      <span className="text-[10px] text-slate-500 font-mono">mhs123</span>
-                    </button>
-                  </div>
-                </div>
               </form>
             </>
           )}
