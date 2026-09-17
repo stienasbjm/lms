@@ -312,6 +312,17 @@ export default function LoginPage({ onBackToLanding }) {
                     </>
                   )}
                 </button>
+
+                <div className="mt-4 pt-3 border-t border-slate-100 text-center">
+                  <button
+                    type="button"
+                    onClick={() => setShowConfigModal(true)}
+                    className="inline-flex items-center gap-1.5 text-[11px] text-slate-500 hover:text-brand-800 font-medium transition-colors"
+                  >
+                    <Database className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Konfigurasi Firebase / Masukkan API Key</span>
+                  </button>
+                </div>
               </form>
             </>
           )}

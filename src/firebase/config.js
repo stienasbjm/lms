@@ -11,14 +11,14 @@ import {
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
-// Default configuration placeholder
+// Default configuration placeholder (Mendukung .env maupun default)
 const DEFAULT_FIREBASE_CONFIG = {
-  apiKey: "AIzaSyDummyKeyForPreviewPurposeOnly12345",
-  authDomain: "lms-stienas.firebaseapp.com",
-  projectId: "lms-stienas",
-  storageBucket: "lms-stienas.appspot.com",
-  messagingSenderId: "123456789012",
-  appId: "1:123456789012:web:abcdef123456"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyDummyKeyForPreviewPurposeOnly12345",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "lms-stienas.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "lms-stienas",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "lms-stienas.appspot.com",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "123456789012",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:123456789012:web:abcdef123456"
 };
 
 // Ambil konfigurasi dari localStorage jika ada, atau fallback ke DEFAULT
