@@ -1,0 +1,117 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function: check if authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function: get user document data
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    
+    // Helper function: check role
+    function hasRole(role) {
+      return isAuthenticated() && getUserData().role == role;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && (getUserData().role == 'SUPER_ADMIN' || getUserData().role == 'ADMIN_AKADEMIK');
+    }
+    
+    function isDosen() {
+      return isAuthenticated() && getUserData().role == 'DOSEN';
+    }
+
+    // Default deny for unauthenticated
+    match /{document=**} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Koleksi users: Pengguna dapat mengedit profil diri sendiri, role & isActive hanya oleh Admin
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAdmin() || (
+        request.auth.uid == userId && 
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'isActive'])
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Master Data: Fakultas, Prodi, Tahun Akademik, Mata Kuliah
+    match /fakultas/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /prodi/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /tahun_akademik/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /mata_kuliah/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Kelas Kuliah & Subkoleksi
+    match /kelas_kuliah/{kelasId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin() || isDosen();
+      allow update, delete: if isAdmin() || (isDosen() && resource.data.dosenId == request.auth.uid);
+
+      // Subkoleksi Enrollments
+      match /enrollments/{mhsId} {
+        allow read: if isAuthenticated();
+        allow write: if isAdmin() || (isDosen() && get(/databases/$(database)/documents/kelas_kuliah/$(kelasId)).data.dosenId == request.auth.uid) || (request.auth.uid == mhsId);
+      }
+
+      // Subkoleksi Meetings
+      match /meetings/{meetingNumber} {
+        allow read: if isAuthenticated();
+        allow write: if isAdmin() || (isDosen() && get(/databases/$(database)/documents/kelas_kuliah/$(kelasId)).data.dosenId == request.auth.uid);
+
+        // Subkoleksi Materials
+        match /materials/{materialId} {
+          allow read: if isAuthenticated();
+          allow write: if isAdmin() || (isDosen() && get(/databases/$(database)/documents/kelas_kuliah/$(kelasId)).data.dosenId == request.auth.uid);
+        }
+
+        // Subkoleksi Attendances
+        match /attendances/{mhsId} {
+          allow read: if isAuthenticated();
+          allow write: if isAdmin() || (isDosen() && get(/databases/$(database)/documents/kelas_kuliah/$(kelasId)).data.dosenId == request.auth.uid);
+        }
+
+        // Subkoleksi Submissions (Tugas Mahasiswa)
+        match /submissions/{mhsId} {
+          allow read: if isAdmin() || (isDosen() && get(/databases/$(database)/documents/kelas_kuliah/$(kelasId)).data.dosenId == request.auth.uid) || (request.auth.uid == mhsId);
+          allow create, update: if (request.auth.uid == mhsId) || isAdmin() || (isDosen() && get(/databases/$(database)/documents/kelas_kuliah/$(kelasId)).data.dosenId == request.auth.uid);
+          allow delete: if isAdmin();
+        }
+      }
+
+      // Subkoleksi Grades (Buku Nilai)
+      match /grades/{mhsId} {
+        allow read: if isAuthenticated();
+        allow write: if isAdmin() || (isDosen() && get(/databases/$(database)/documents/kelas_kuliah/$(kelasId)).data.dosenId == request.auth.uid);
+      }
+    }
+
+    // Koleksi Audit Logs
+    match /audit_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated();
+      allow update, delete: if false; // Immutable audit log
+    }
+  }
+}

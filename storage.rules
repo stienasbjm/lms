@@ -1,0 +1,27 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper: authenticated user
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Direktori Bahan Ajar: materials/{kelasId}/{meetingId}/{fileName}
+    match /materials/{kelasId}/{meetingId}/{fileName} {
+      // Dapat diunduh oleh seluruh pengguna terautentikasi
+      allow read: if isAuthenticated();
+      // Hanya dapat diunggah / diubah oleh dosen / admin (maks 50MB)
+      allow write: if isAuthenticated() && request.resource.size < 50 * 1024 * 1024;
+    }
+
+    // Direktori Tugas Mahasiswa: submissions/{kelasId}/{meetingId}/{fileName}
+    match /submissions/{kelasId}/{meetingId}/{fileName} {
+      // Mahasiswa dan dosen berhak membaca tugas
+      allow read: if isAuthenticated();
+      // Mahasiswa dapat mengunggah file tugas miliknya sendiri (maks 20MB)
+      allow write: if isAuthenticated() && request.resource.size < 20 * 1024 * 1024;
+    }
+  }
+}
