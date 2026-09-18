@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { getClasses, updateStudentGrade, getUsers, subscribeToDataSync } from '../firebase/firestoreService';
+import { getClasses, updateStudentGrade, getUsers, getTahunAkademik, subscribeToDataSync } from '../firebase/firestoreService';
 import { 
   calculateFinalGrade, 
   getGradeBadgeColor, 
@@ -23,7 +23,8 @@ import {
   Sparkles,
   User,
   Check,
-  AlertCircle
+  AlertCircle,
+  Lock
 } from 'lucide-react';
 
 export default function GradebookPage() {
@@ -31,6 +32,7 @@ export default function GradebookPage() {
   const [classes, setClasses] = useState([]);
   const [selectedClassId, setSelectedClassId] = useState('');
   const [usersList, setUsersList] = useState([]);
+  const [tas, setTas] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // Edit Modal State (Dosen / Admin)
@@ -46,12 +48,14 @@ export default function GradebookPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [cls, usrs] = await Promise.all([
+      const [cls, usrs, tList] = await Promise.all([
         getClasses(),
-        getUsers()
+        getUsers(),
+        getTahunAkademik()
       ]);
       setClasses(cls);
       setUsersList(usrs);
+      setTas(tList);
       if (cls.length > 0 && !selectedClassId) {
         setSelectedClassId(cls[0].id);
       }
@@ -70,9 +74,18 @@ export default function GradebookPage() {
     return () => unsubscribe();
   }, [user]);
 
+  const activeTa = tas.find(t => t.isActive);
   const selectedClass = classes.find(c => c.id === selectedClassId) || classes[0];
+  const selectedClassTa = tas.find(t => t.id === selectedClass?.tahunAkademikId || t.namaTa === selectedClass?.namaTa);
+  const isClassTaActive = selectedClassTa ? selectedClassTa.isActive : false;
+  const isDosenOfClass = isDosen && selectedClass?.dosenId === user?.uid;
+  const canEditGrades = isAdmin ? true : (isDosenOfClass && isClassTaActive);
 
   const handleOpenEdit = (mhsId, existingGrade) => {
+    if (!canEditGrades) {
+      showErrorAlert("Akses Penilaian Ditutup", "Tahun akademik untuk kelas ini telah ditutup oleh Bagian Akademik (BAA). Dosen tidak dapat mengubah nilai.");
+      return;
+    }
     const rawGrade = existingGrade || {};
     setEditingStudent({ mhsId, ...rawGrade });
     setOverrideGrade(rawGrade.overrideGrade || (rawGrade.isOverridden ? rawGrade.nilaiHuruf : 'AUTO'));
@@ -87,6 +100,11 @@ export default function GradebookPage() {
   const handleSaveGrade = async (e) => {
     e.preventDefault();
     if (!editingStudent || !selectedClassId) return;
+
+    if (!canEditGrades) {
+      showErrorAlert("Akses Penilaian Ditutup", "Tahun akademik untuk kelas ini telah ditutup oleh Bagian Akademik (BAA). Dosen tidak dapat mengubah nilai.");
+      return;
+    }
 
     try {
       const isManual = overrideGrade !== 'AUTO';
@@ -114,6 +132,10 @@ export default function GradebookPage() {
   // Ubah cepat nilai mutu langsung dari dropdown tabel kelas
   const handleQuickChangeGrade = async (mhsId, rawGrade, newGradeLetter) => {
     if (!selectedClassId) return;
+    if (!canEditGrades) {
+      showErrorAlert("Akses Penilaian Ditutup", "Tahun akademik untuk kelas ini telah ditutup oleh Bagian Akademik (BAA). Dosen tidak dapat mengubah nilai.");
+      return;
+    }
     try {
       await updateStudentGrade(
         selectedClassId,
@@ -139,9 +161,17 @@ export default function GradebookPage() {
   };
 
   // -------------------------------------------------------------
-  // LOGIKA KHUSUS MAHASISWA: REKAP KHS SELURUH MATA KULIAH DIAMBIL
+  // LOGIKA KHUSUS MAHASISWA: REKAP KHS HANYA UNTUK SEMESTER AKTIF BAA
   // -------------------------------------------------------------
-  const myEnrolledClasses = classes.filter(c => (c.enrolledStudents || []).includes(user?.uid));
+  const myEnrolledClasses = classes.filter(c => {
+    const isEnrolled = (c.enrolledStudents || []).includes(user?.uid);
+    if (!isEnrolled) return false;
+    // Mahasiswa hanya melihat nilai pada semester yang aktif dibuka oleh BAA
+    if (activeTa) {
+      return c.tahunAkademikId === activeTa.id || c.namaTa === activeTa.namaTa;
+    }
+    return false;
+  });
 
   // Kalkulasi total SKS dan IPK Mahasiswa
   let totalSks = 0;
@@ -275,6 +305,22 @@ export default function GradebookPage() {
   // VIEW 1: KHUSUS MAHASISWA (KHS LENGKAP TANPA DROPDOWN PILIH KELAS)
   // =========================================================================
   if (isMahasiswa) {
+    if (!activeTa) {
+      return (
+        <div className="min-h-[360px] flex items-center justify-center p-6 animate-in fade-in">
+          <div className="bg-white rounded-3xl border border-rose-200 p-8 max-w-md text-center shadow-lg space-y-3">
+            <div className="w-14 h-14 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto border border-rose-200">
+              <Lock className="w-7 h-7" />
+            </div>
+            <h3 className="font-extrabold text-base text-slate-900">Semester Perkuliahan Ditutup</h3>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Saat ini belum ada Tahun Akademik / Semester yang dibuka oleh Bagian Administrasi Akademik (BAA). Kartu Hasil Studi (KHS) dan rekapitulasi penilaian berjalan tidak dapat diakses hingga semester baru resmi dibuka oleh BAA.
+            </p>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="space-y-6">
         
@@ -321,7 +367,7 @@ export default function GradebookPage() {
 
           <div className="flex items-center gap-2 text-xs bg-brand-50 text-brand-900 px-3 py-1.5 rounded-xl border border-brand-200">
             <Sparkles className="w-4 h-4 text-amber-500" />
-            <span className="font-bold">TA 2026/2027 Ganjil</span>
+            <span className="font-bold">TA {activeTa.namaTa} (Aktif BAA)</span>
           </div>
         </div>
 
@@ -518,9 +564,6 @@ export default function GradebookPage() {
     };
   });
 
-  const isDosenOfClass = isDosen && selectedClass?.dosenId === user?.uid;
-  const canEditGrades = isAdmin || isDosenOfClass;
-
   const previewCalc = calculateFinalGrade(
     scoresForm.nilaiTugas,
     scoresForm.nilaiKuis,
@@ -565,11 +608,15 @@ export default function GradebookPage() {
             onChange={e => setSelectedClassId(e.target.value)}
             className="px-3 py-1.5 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 bg-white font-semibold text-brand-900"
           >
-            {classes.map(c => (
-              <option key={c.id} value={c.id}>
-                {c.kodeMk} - {c.namaMk} (Kelas {c.namaKelas})
-              </option>
-            ))}
+            {classes.map(c => {
+              const cTa = tas.find(t => t.id === c.tahunAkademikId || t.namaTa === c.namaTa);
+              const isCActive = cTa ? cTa.isActive : false;
+              return (
+                <option key={c.id} value={c.id}>
+                  {c.kodeMk} - {c.namaMk} (Kelas {c.namaKelas}) {isCActive ? '• [DIBUKA / Aktif BAA]' : '• [DITUTUP BAA]'}
+                </option>
+              );
+            })}
           </select>
         </div>
 
@@ -577,6 +624,17 @@ export default function GradebookPage() {
           Dosen: <strong className="text-slate-800">{selectedClass?.namaDosen}</strong> • {selectedClass?.sks} SKS • <span className="text-brand-700 font-bold">16 Sesi RPS OBE</span>
         </div>
       </div>
+
+      {/* Peringatan jika semester kelas ini ditutup oleh BAA */}
+      {!isClassTaActive && (
+        <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-center gap-3 text-xs text-rose-800 shadow-sm animate-in fade-in">
+          <Lock className="w-5 h-5 text-rose-600 shrink-0" />
+          <div>
+            <span className="font-bold text-sm block mb-0.5">Semester Perkuliahan Ditutup oleh BAA</span>
+            Tahun akademik untuk kelas <strong>{selectedClass?.namaMk} ({selectedClass?.namaKelas})</strong> saat ini berstatus <strong>DITUTUP</strong>. Penilaian berada dalam status arsip terkunci (read-only) dan tidak dapat diubah oleh dosen pengampu.
+          </div>
+        </div>
+      )}
 
       {/* OBE Assessment Rubric & CPMK Alignment Card */}
       <div className="p-4 bg-slate-900 text-white rounded-2xl border border-slate-800 space-y-3">

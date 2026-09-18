@@ -38,7 +38,8 @@ import {
   Settings,
   Share2,
   Check,
-  Trash2
+  Trash2,
+  Lock
 } from 'lucide-react';
 import { showSuccessAlert, showErrorAlert, showSuccessToast, showErrorToast, showConfirmDialog } from '../utils/alert';
 
@@ -86,8 +87,8 @@ export default function ClassDetailPage({ classId, onBack }) {
       setClassData(cls);
       setAllUsers(usrs);
 
-      if (cls && cls.tahunAkademikId) {
-        const classTa = tas.find(t => t.id === cls.tahunAkademikId);
+      if (cls) {
+        const classTa = tas.find(t => t.id === cls.tahunAkademikId || t.namaTa === cls.namaTa);
         setIsTaActive(classTa ? classTa.isActive : false);
       }
     } catch (err) {
@@ -110,6 +111,40 @@ export default function ClassDetailPage({ classId, onBack }) {
       <div className="flex items-center justify-center h-64 text-xs text-slate-500">
         <Clock className="w-5 h-5 animate-spin mr-2 text-brand-600" />
         Memuat detail kelas perkuliahan...
+      </div>
+    );
+  }
+
+  // Jika semester ditutup oleh BAA/Admin, Mahasiswa dan Dosen TIDAK DAPAT mengakses kelas ini
+  if (!isAdmin && !isTaActive) {
+    return (
+      <div className="min-h-[420px] flex items-center justify-center p-6 animate-in fade-in duration-200">
+        <div className="bg-white rounded-3xl border border-rose-200 p-8 max-w-lg text-center shadow-xl space-y-4">
+          <div className="w-16 h-16 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center mx-auto shadow-inner">
+            <Lock className="w-8 h-8" />
+          </div>
+          <div>
+            <span className="text-[11px] uppercase tracking-wider font-bold text-rose-700 bg-rose-100 px-3 py-1 rounded-full border border-rose-200">
+              Semester Ditutup Oleh BAA
+            </span>
+            <h3 className="font-extrabold text-lg text-slate-900 mt-2">
+              Akses Perkuliahan Ditutup
+            </h3>
+            <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+              Tahun akademik / semester untuk kelas <strong>{classData.namaMk} ({classData.namaKelas})</strong> saat ini berstatus <strong>DITUTUP</strong> oleh Bagian Administrasi Akademik (BAA). 
+              Sesuai ketentuan akademik STIE Nasional, mahasiswa dan dosen tidak dapat mengakses modul materi, presensi, pengumpulan tugas, maupun penilaian kelas ini.
+            </p>
+          </div>
+          <div className="pt-2">
+            <button
+              onClick={onBack}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-brand-800 hover:bg-brand-900 text-white rounded-xl text-xs font-bold shadow-md transition-all transform hover:-translate-y-0.5"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Kembali ke Daftar Kelas Aktif</span>
+            </button>
+          </div>
+        </div>
       </div>
     );
   }

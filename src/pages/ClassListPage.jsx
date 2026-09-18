@@ -23,7 +23,9 @@ import {
   UserPlus,
   Filter,
   CheckCircle2,
-  GraduationCap
+  GraduationCap,
+  Lock,
+  AlertCircle
 } from 'lucide-react';
 
 export default function ClassListPage({ onSelectClass }) {
@@ -134,6 +136,13 @@ export default function ClassListPage({ onSelectClass }) {
   };
 
   const handleSelfEnroll = async (classId) => {
+    const targetClass = classes.find(c => c.id === classId);
+    const classTa = tas.find(t => t.id === targetClass?.tahunAkademikId || t.namaTa === targetClass?.namaTa);
+    if (!classTa || !classTa.isActive) {
+      showErrorAlert("Pendaftaran Ditolak", "Semester perkuliahan untuk kelas ini telah ditutup oleh Bagian Akademik (BAA). Anda tidak dapat mendaftar.");
+      return;
+    }
+
     try {
       await enrollStudent(classId, user.uid, user);
       showSuccessToast("Berhasil mendaftar ke kelas perkuliahan!");
@@ -211,8 +220,19 @@ export default function ClassListPage({ onSelectClass }) {
         )}
       </div>
 
+      {/* Notifikasi jika seluruh semester ditutup untuk Dosen dan Mahasiswa */}
+      {!activeTa && !isAdmin && (
+        <div className="p-4 bg-rose-50 border border-rose-300 rounded-2xl flex items-start gap-3 text-xs text-rose-900 shadow-sm animate-in fade-in">
+          <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+          <div>
+            <span className="font-bold text-sm block mb-0.5">Tahun Akademik (Semester) Berstatus Ditutup</span>
+            Saat ini belum ada Tahun Akademik / Semester yang dibuka oleh Bagian Administrasi Akademik (BAA). Seluruh kelas perkuliahan berada dalam status non-aktif dan ditutup untuk akses Dosen maupun Mahasiswa hingga semester baru resmi dibuka oleh BAA.
+          </div>
+        </div>
+      )}
+
       {/* Banner Informasi Hak Akses Perkuliahan untuk Dosen & Mahasiswa */}
-      {!isAdmin && (
+      {!isAdmin && activeTa && (
         <div className="p-3.5 bg-blue-50/80 border border-blue-200 rounded-2xl flex items-start gap-3 text-xs text-blue-900">
           <div className="p-1.5 bg-blue-100 rounded-lg text-blue-700 shrink-0 mt-0.5">
             <GraduationCap className="w-4 h-4" />
@@ -249,7 +269,7 @@ export default function ClassListPage({ onSelectClass }) {
               <option value="ALL">Semua Semester ({classes.length} Kelas)</option>
               {tas.map(ta => (
                 <option key={ta.id} value={ta.id}>
-                  {ta.namaTa} {ta.isActive ? '• [Semester Aktif BAA]' : ''}
+                  {ta.namaTa} {ta.isActive ? '• [DIBUKA / Semester Aktif BAA]' : '• [DITUTUP BAA]'}
                 </option>
               ))}
             </select>
@@ -263,8 +283,9 @@ export default function ClassListPage({ onSelectClass }) {
                     Semester Aktif BAA
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 border border-slate-200 text-[11px] font-medium">
-                    Arsip Semester
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 text-[11px] font-bold">
+                    <Lock className="w-3 h-3 text-rose-500" />
+                    Semester Ditutup (Arsip)
                   </span>
                 )}
               </div>
@@ -368,6 +389,8 @@ export default function ClassListPage({ onSelectClass }) {
             const isEnrolled = (cls.enrolledStudents || []).includes(user?.uid);
             const isFull = (cls.enrolledStudents || []).length >= (cls.kuota || 40);
             const isLecturer = isDosen && cls.dosenId === user?.uid;
+            const classTa = tas.find(t => t.id === cls.tahunAkademikId || t.namaTa === cls.namaTa);
+            const isClassSemesterActive = classTa ? classTa.isActive : false;
 
             return (
               <div 
@@ -391,11 +414,18 @@ export default function ClassListPage({ onSelectClass }) {
                         </span>
                       )}
                     </div>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${
-                      cls.status === 'OPEN' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-600'
-                    }`}>
-                      {cls.status || 'OPEN'}
-                    </span>
+                    {isClassSemesterActive ? (
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${
+                        cls.status === 'OPEN' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-600'
+                      }`}>
+                        {cls.status || 'OPEN'}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 bg-rose-50 text-rose-700 border-rose-200 flex items-center gap-1">
+                        <Lock className="w-2.5 h-2.5 text-rose-600" />
+                        DITUTUP BAA
+                      </span>
+                    )}
                   </div>
 
                   <h3 className="font-bold text-base text-slate-900 line-clamp-1">
@@ -434,7 +464,22 @@ export default function ClassListPage({ onSelectClass }) {
                 </div>
 
                 <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
-                  {isMahasiswa && !isEnrolled ? (
+                  {!isClassSemesterActive ? (
+                    isAdmin ? (
+                      <button
+                        onClick={() => onSelectClass(cls.id)}
+                        className="w-full py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-colors"
+                      >
+                        <span>Pantau Kelas (Arsip BAA)</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    ) : (
+                      <div className="w-full py-2 bg-slate-100 border border-slate-200 text-slate-500 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 cursor-not-allowed">
+                        <Lock className="w-3.5 h-3.5 text-slate-400" />
+                        <span>Akses Ditutup (Semester Non-Aktif)</span>
+                      </div>
+                    )
+                  ) : isMahasiswa && !isEnrolled ? (
                     <button
                       disabled={isFull}
                       onClick={() => handleSelfEnroll(cls.id)}
