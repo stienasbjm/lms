@@ -9,7 +9,8 @@ import {
   getTahunAkademik, 
   getUsers,
   enrollStudent,
-  subscribeToDataSync 
+  subscribeToDataSync,
+  isClassAssignedToLecturer
 } from '../firebase/firestoreService';
 import { showSuccessToast, showErrorAlert, showConfirmDialog } from '../utils/alert';
 import { 
@@ -143,8 +144,10 @@ export default function ClassListPage({ onSelectClass }) {
         kodeMk: selectedMk.kodeMk,
         sks: selectedMk.sks,
         namaTa: selectedTa?.namaTa || '2026/2027 Ganjil',
-        dosenId: selectedDosen?.uid || '',
-        namaDosen: selectedDosen?.name || 'Dosen Belum Ditentukan'
+        dosenId: selectedDosen?.uid || selectedDosen?.id || '',
+        namaDosen: selectedDosen?.name || 'Dosen Belum Ditentukan',
+        dosenNidn: selectedDosen?.nidn || '',
+        dosenEmail: selectedDosen?.email || ''
       }, user);
 
       setShowCreateModal(false);
@@ -194,8 +197,10 @@ export default function ClassListPage({ onSelectClass }) {
         sks: selectedMk?.sks || selectedClassToEdit.sks,
         tahunAkademikId: selectedTa?.id || selectedClassToEdit.tahunAkademikId,
         namaTa: selectedTa?.namaTa || selectedClassToEdit.namaTa,
-        dosenId: selectedDosen?.uid || selectedClassToEdit.dosenId,
-        namaDosen: selectedDosen?.name || selectedClassToEdit.namaDosen
+        dosenId: selectedDosen?.uid || selectedDosen?.id || selectedClassToEdit.dosenId,
+        namaDosen: selectedDosen?.name || selectedClassToEdit.namaDosen,
+        dosenNidn: selectedDosen?.nidn || selectedClassToEdit.dosenNidn || '',
+        dosenEmail: selectedDosen?.email || selectedClassToEdit.dosenEmail || ''
       }, user);
 
       setShowEditModal(false);
@@ -263,9 +268,9 @@ export default function ClassListPage({ onSelectClass }) {
       if (!matchTa) return false;
     }
 
-    // 2. Sub-filter Dosen
-    if (isDosen && filterDosenScope === 'MY_CLASSES') {
-      if (cls.dosenId !== user?.uid) return false;
+    // 2. KETENTUAN KHUSUS DOSEN: HANYA TAMPILKAN KELAS YANG DIDAFTARKAN/DITUGASKAN OLEH BAA
+    if (isDosen) {
+      if (!isClassAssignedToLecturer(cls, user)) return false;
     }
 
     // 3. Sub-filter Mahasiswa
@@ -281,7 +286,7 @@ export default function ClassListPage({ onSelectClass }) {
   const totalClassesInSemester = classes.filter(c => 
     selectedSemesterId === 'ALL' || c.tahunAkademikId === selectedSemesterId || c.namaTa === selectedTa?.namaTa
   );
-  const myDosenClassesCount = totalClassesInSemester.filter(c => c.dosenId === user?.uid).length;
+  const myDosenClassesCount = totalClassesInSemester.filter(c => isClassAssignedToLecturer(c, user)).length;
   const myEnrolledClassesCount = totalClassesInSemester.filter(c => (c.enrolledStudents || []).includes(user?.uid)).length;
 
   return (
@@ -390,25 +395,11 @@ export default function ClassListPage({ onSelectClass }) {
             )}
           </div>
 
-          {/* Sub-Filter Khusus Dosen */}
+          {/* Indikator Khusus Dosen: Hanya Kelas Penugasan BAA */}
           {isDosen && (
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
-              <button
-                onClick={() => setFilterDosenScope('ALL')}
-                className={`px-3 py-1 rounded-lg font-medium transition-all ${
-                  filterDosenScope === 'ALL' ? 'bg-white shadow text-slate-900 font-bold' : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Semua Kelas ({totalClassesInSemester.length})
-              </button>
-              <button
-                onClick={() => setFilterDosenScope('MY_CLASSES')}
-                className={`px-3 py-1 rounded-lg font-medium transition-all ${
-                  filterDosenScope === 'MY_CLASSES' ? 'bg-white shadow text-blue-700 font-bold' : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Kelas Saya ({myDosenClassesCount})
-              </button>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 border border-blue-200 text-xs font-bold text-blue-900 shadow-sm">
+              <BookOpen className="w-4 h-4 text-blue-700" />
+              <span>Kelas Penugasan BAA: {myDosenClassesCount} Kelas</span>
             </div>
           )}
 
@@ -464,7 +455,9 @@ export default function ClassListPage({ onSelectClass }) {
           <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
             {isAdmin 
               ? `Belum ada kelas perkuliahan yang dibuat untuk ${selectedTa ? selectedTa.namaTa : 'semester ini'}. Silakan buat kelas perkuliahan baru menggunakan tombol di bawah.`
-              : `Belum ada kelas perkuliahan yang dijadwalkan oleh Bagian Akademik (BAA) untuk periode ${selectedTa ? selectedTa.namaTa : 'ini'}.`}
+              : isDosen
+                ? `Belum ada kelas perkuliahan yang didaftarkan atau ditugaskan oleh Bagian Administrasi Akademik (BAA) kepada akun Anda untuk periode ${selectedTa ? selectedTa.namaTa : 'ini'}. Silakan berkoordinasi dengan BAA untuk penjadwalan mengajar.`
+                : `Belum ada kelas perkuliahan yang dijadwalkan oleh Bagian Akademik (BAA) untuk periode ${selectedTa ? selectedTa.namaTa : 'ini'}.`}
           </p>
           {isAdmin && (
             <button
@@ -486,7 +479,7 @@ export default function ClassListPage({ onSelectClass }) {
           {filteredClasses.map(cls => {
             const isEnrolled = (cls.enrolledStudents || []).includes(user?.uid);
             const isFull = (cls.enrolledStudents || []).length >= (cls.kuota || 40);
-            const isLecturer = isDosen && cls.dosenId === user?.uid;
+            const isLecturer = isDosen && isClassAssignedToLecturer(cls, user);
             const classTa = tas.find(t => t.id === cls.tahunAkademikId || t.namaTa === cls.namaTa);
             const isClassSemesterActive = classTa ? classTa.isActive : false;
 

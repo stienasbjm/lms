@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { getClasses, updateStudentGrade, getUsers, getTahunAkademik, subscribeToDataSync } from '../firebase/firestoreService';
+import { 
+  getClasses, 
+  updateStudentGrade, 
+  getUsers, 
+  getTahunAkademik, 
+  subscribeToDataSync,
+  isClassAssignedToLecturer 
+} from '../firebase/firestoreService';
 import { 
   calculateFinalGrade, 
   getGradeBadgeColor, 
@@ -56,8 +63,11 @@ export default function GradebookPage() {
       setClasses(cls);
       setUsersList(usrs);
       setTas(tList);
-      if (cls.length > 0 && !selectedClassId) {
-        setSelectedClassId(cls[0].id);
+      const available = isDosen 
+        ? cls.filter(c => isClassAssignedToLecturer(c, user))
+        : cls;
+      if (available.length > 0 && (!selectedClassId || !available.some(c => c.id === selectedClassId))) {
+        setSelectedClassId(available[0].id);
       }
     } catch (err) {
       console.error(err);
@@ -75,10 +85,13 @@ export default function GradebookPage() {
   }, [user]);
 
   const activeTa = tas.find(t => t.isActive);
-  const selectedClass = classes.find(c => c.id === selectedClassId) || classes[0];
+  const displayedClasses = isDosen 
+    ? classes.filter(c => isClassAssignedToLecturer(c, user))
+    : classes;
+  const selectedClass = displayedClasses.find(c => c.id === selectedClassId) || displayedClasses[0];
   const selectedClassTa = tas.find(t => t.id === selectedClass?.tahunAkademikId || t.namaTa === selectedClass?.namaTa);
   const isClassTaActive = selectedClassTa ? selectedClassTa.isActive : false;
-  const isDosenOfClass = isDosen && selectedClass?.dosenId === user?.uid;
+  const isDosenOfClass = isDosen && isClassAssignedToLecturer(selectedClass, user);
   const canEditGrades = isAdmin ? true : (isDosenOfClass && isClassTaActive);
 
   const handleOpenEdit = (mhsId, existingGrade) => {
@@ -608,20 +621,28 @@ export default function GradebookPage() {
             onChange={e => setSelectedClassId(e.target.value)}
             className="px-3 py-1.5 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 bg-white font-semibold text-brand-900"
           >
-            {classes.map(c => {
-              const cTa = tas.find(t => t.id === c.tahunAkademikId || t.namaTa === c.namaTa);
-              const isCActive = cTa ? cTa.isActive : false;
-              return (
-                <option key={c.id} value={c.id}>
-                  {c.kodeMk} - {c.namaMk} (Kelas {c.namaKelas}) {isCActive ? '• [DIBUKA / Aktif BAA]' : '• [DITUTUP BAA]'}
-                </option>
-              );
-            })}
+            {displayedClasses.length === 0 ? (
+              <option value="">(Belum ada kelas yang didaftarkan BAA)</option>
+            ) : (
+              displayedClasses.map(c => {
+                const cTa = tas.find(t => t.id === c.tahunAkademikId || t.namaTa === c.namaTa);
+                const isCActive = cTa ? cTa.isActive : false;
+                return (
+                  <option key={c.id} value={c.id}>
+                    {c.kodeMk} - {c.namaMk} (Kelas {c.namaKelas}) {isCActive ? '• [DIBUKA / Aktif BAA]' : '• [DITUTUP BAA]'}
+                  </option>
+                );
+              })
+            )}
           </select>
         </div>
 
         <div className="text-slate-500 text-[11px] font-medium">
-          Dosen: <strong className="text-slate-800">{selectedClass?.namaDosen}</strong> • {selectedClass?.sks} SKS • <span className="text-brand-700 font-bold">16 Sesi RPS OBE</span>
+          {selectedClass ? (
+            <>Dosen: <strong className="text-slate-800">{selectedClass.namaDosen}</strong> • {selectedClass.sks} SKS • <span className="text-brand-700 font-bold">16 Sesi RPS OBE</span></>
+          ) : (
+            <span className="text-amber-700 font-medium">Belum ada kelas penugasan BAA untuk akun Anda</span>
+          )}
         </div>
       </div>
 

@@ -7,7 +7,8 @@ import {
   getTahunAkademik,
   getAuditLogs,
   calculateLecturersActivityScores,
-  subscribeToDataSync 
+  subscribeToDataSync,
+  isClassAssignedToLecturer
 } from '../firebase/firestoreService';
 import { 
   BookOpen, 
@@ -76,7 +77,7 @@ export default function DashboardPage({ onNavigate }) {
 
   // Filter kelas sesuai peran dan TAHUN AKADEMIK AKTIF BAA
   const myClasses = isDosen 
-    ? classes.filter(c => c.dosenId === user.uid && (activeTa ? (c.tahunAkademikId === activeTa.id || c.namaTa === activeTa.namaTa) : false))
+    ? classes.filter(c => isClassAssignedToLecturer(c, user) && (activeTa ? (c.tahunAkademikId === activeTa.id || c.namaTa === activeTa.namaTa) : false))
     : isMahasiswa 
     ? classes.filter(c => (c.enrolledStudents || []).includes(user.uid) && (activeTa ? (c.tahunAkademikId === activeTa.id || c.namaTa === activeTa.namaTa) : false))
     : (activeTa ? classes.filter(c => c.tahunAkademikId === activeTa.id || c.namaTa === activeTa.namaTa) : classes);

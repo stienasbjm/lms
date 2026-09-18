@@ -706,6 +706,35 @@ export async function batchImportData(type, items, user) {
 /* =========================================================================
    3. KELAS KULIAH & 16 PERTEMUAN (FR-03)
    ========================================================================= */
+
+/**
+ * Helper untuk memvalidasi apakah suatu kelas perkuliahan ditugaskan kepada Dosen tertentu oleh BAA
+ */
+export function isClassAssignedToLecturer(cls, lecturer) {
+  if (!cls || !lecturer) return false;
+  const lecturerUid = lecturer.uid ? String(lecturer.uid).trim() : '';
+  const lecturerId = lecturer.id ? String(lecturer.id).trim() : '';
+  const lecturerNidn = lecturer.nidn ? String(lecturer.nidn).trim() : '';
+  const lecturerEmail = lecturer.email ? String(lecturer.email).trim().toLowerCase() : '';
+  const lecturerName = lecturer.name ? String(lecturer.name).trim().toLowerCase() : '';
+
+  const classDosenId = cls.dosenId ? String(cls.dosenId).trim() : '';
+  const classDosenNidn = cls.dosenNidn ? String(cls.dosenNidn).trim() : '';
+  const classDosenEmail = cls.dosenEmail ? String(cls.dosenEmail).trim().toLowerCase() : '';
+  const classDosenName = cls.namaDosen ? String(cls.namaDosen).trim().toLowerCase() : '';
+
+  // 1. Cocokkan berdasarkan UID atau ID akun
+  if (classDosenId && (classDosenId === lecturerUid || classDosenId === lecturerId)) return true;
+  // 2. Cocokkan berdasarkan NIDN jika tersedia
+  if (lecturerNidn && (classDosenId === lecturerNidn || classDosenNidn === lecturerNidn)) return true;
+  // 3. Cocokkan berdasarkan email
+  if (lecturerEmail && (classDosenId === lecturerEmail || classDosenEmail === lecturerEmail)) return true;
+  // 4. Cocokkan berdasarkan nama dosen pengampu
+  if (classDosenName && lecturerName && classDosenName === lecturerName) return true;
+
+  return false;
+}
+
 export async function getClasses() {
   return await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
 }
@@ -980,7 +1009,7 @@ export async function calculateLecturersActivityScores() {
   const classes = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
 
   return lecturers.map(dosen => {
-    const dosenClasses = classes.filter(c => c.dosenId === dosen.uid);
+    const dosenClasses = classes.filter(c => isClassAssignedToLecturer(c, dosen));
     let totalMateri = 0;
     let totalPresensi = 0;
     let totalTugasDinilai = 0;
