@@ -22,7 +22,7 @@ import {
   generateSuggestedNim, 
   ANGKATAN_OPTIONS 
 } from '../utils/studentNimHelper';
-import FirebaseSettingsModal from '../components/common/FirebaseSettingsModal';
+
 import { showErrorAlert, showSuccessAlert, showSuccessToast } from '../utils/alert';
 
 export default function LoginPage({ onBackToLanding }) {
@@ -36,7 +36,7 @@ export default function LoginPage({ onBackToLanding }) {
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showConfigModal, setShowConfigModal] = useState(false);
+
 
   // Register State (Khusus Mahasiswa Baru)
   const [regForm, setRegForm] = useState({
@@ -243,7 +243,7 @@ export default function LoginPage({ onBackToLanding }) {
                       required
                       value={identifier}
                       onChange={(e) => setIdentifier(e.target.value)}
-                      placeholder="admin@stienas.ac.id / 221011001"
+                      placeholder="nama@gmail.com / 221011001"
                       className="block w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none transition-all"
                     />
                   </div>
@@ -301,17 +301,6 @@ export default function LoginPage({ onBackToLanding }) {
                     </>
                   )}
                 </button>
-
-                <div className="mt-4 pt-3 border-t border-slate-100 text-center">
-                  <button
-                    type="button"
-                    onClick={() => setShowConfigModal(true)}
-                    className="inline-flex items-center gap-1.5 text-[11px] text-slate-500 hover:text-brand-800 font-medium transition-colors"
-                  >
-                    <Database className="w-3.5 h-3.5 text-amber-500" />
-                    <span>Konfigurasi Firebase / Masukkan API Key</span>
-                  </button>
-                </div>
               </form>
             </>
           )}
@@ -562,9 +551,6 @@ export default function LoginPage({ onBackToLanding }) {
         )}
       </div>
 
-      {showConfigModal && (
-        <FirebaseSettingsModal onClose={() => setShowConfigModal(false)} />
-      )}
     </div>
   );
 }

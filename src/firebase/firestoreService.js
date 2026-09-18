@@ -70,36 +70,112 @@ export function subscribeToDataSync(callback) {
   };
 }
 
-export function getLocal(key, initial) {
+export function getCollectionName(key) {
+  switch (key) {
+    case STORAGE_KEYS.FAKULTAS: return 'fakultas';
+    case STORAGE_KEYS.PRODI: return 'prodi';
+    case STORAGE_KEYS.TA: return 'tahun_akademik';
+    case STORAGE_KEYS.USERS: return 'users';
+    case STORAGE_KEYS.MK: return 'mata_kuliah';
+    case STORAGE_KEYS.CLASSES: return 'kelas_kuliah';
+    case STORAGE_KEYS.LOGS: return 'audit_logs';
+    default: return null;
+  }
+}
+
+export async function getLocal(key, initial) {
+  let fbLoaded = false;
+  if (isRealFirebaseConfigured() && db) {
+    const colName = getCollectionName(key);
+    if (colName) {
+      try {
+        const snap = await getDocs(collection(db, colName));
+        if (!snap.empty) {
+          const items = snap.docs.map(d => {
+            const data = d.data();
+            if (!data.uid && !data.id) {
+               data.id = d.id;
+            }
+            return data;
+          });
+          localStorage.setItem(key, JSON.stringify(items));
+          fbLoaded = true;
+          return items;
+        }
+      } catch(e) {
+        console.warn("Firestore getLocal error:", e);
+      }
+    }
+  }
+
   try {
     const raw = localStorage.getItem(key);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+       const parsed = JSON.parse(raw);
+       // Jika data diambil dari lokal, dorong naik ke Firebase
+       if (!fbLoaded && isRealFirebaseConfigured()) {
+          await setLocal(key, parsed);
+       }
+       return parsed;
+    }
   } catch (e) {
     console.warn("Storage read error:", e);
   }
-  setLocal(key, initial);
+  await setLocal(key, initial);
   return initial;
 }
 
-export function setLocal(key, value) {
+export async function setLocal(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
     notifyDataChange(key, value);
+    
+    if (isRealFirebaseConfigured() && db) {
+      const colName = getCollectionName(key);
+      if (colName && Array.isArray(value)) {
+        const existingSnap = await getDocs(collection(db, colName));
+        const newIds = value.map(v => v.uid || v.id).filter(Boolean);
+        
+        const batch = writeBatch(db);
+        let count = 0;
+        
+        existingSnap.docs.forEach(d => {
+          if (!newIds.includes(d.id)) {
+            batch.delete(doc(db, colName, d.id));
+            count++;
+          }
+        });
+        
+        value.forEach(item => {
+          const id = item.uid || item.id;
+          if (id) {
+            batch.set(doc(db, colName, String(id)), item, { merge: true });
+            count++;
+          }
+        });
+        
+        if (count > 0 && count <= 500) {
+           await batch.commit();
+        } else if (count > 500) {
+           console.warn("Batch size exceeds 500, skipping sync.");
+        }
+      }
+    }
   } catch (e) {
     console.warn("Storage write error:", e);
   }
 }
 
 // Inisialisasi awal localStorage
-export function initializeLocalStore() {
-  getLocal(STORAGE_KEYS.FAKULTAS, INITIAL_FAKULTAS);
-  getLocal(STORAGE_KEYS.PRODI, INITIAL_PRODI);
-  getLocal(STORAGE_KEYS.TA, INITIAL_TA);
-  getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
-  getLocal(STORAGE_KEYS.MK, INITIAL_MK);
+export async function initializeLocalStore() {
+  await getLocal(STORAGE_KEYS.FAKULTAS, INITIAL_FAKULTAS);
+  await getLocal(STORAGE_KEYS.PRODI, INITIAL_PRODI);
+  await getLocal(STORAGE_KEYS.TA, INITIAL_TA);
+  await getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
+  await getLocal(STORAGE_KEYS.MK, INITIAL_MK);
   
   // Bersihkan materi dummy lama yang memiliki raw.githubusercontent.com
-  const existingClasses = getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
+  const existingClasses = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
   const cleanedClasses = existingClasses.map(cls => ({
     ...cls,
     meetings: (cls.meetings || []).map(m => ({
@@ -110,11 +186,11 @@ export function initializeLocalStore() {
       )
     }))
   }));
-  setLocal(STORAGE_KEYS.CLASSES, cleanedClasses);
+  await setLocal(STORAGE_KEYS.CLASSES, cleanedClasses);
 
-  getLocal(STORAGE_KEYS.LOGS, INITIAL_AUDIT_LOGS);
+  await getLocal(STORAGE_KEYS.LOGS, INITIAL_AUDIT_LOGS);
 }
-initializeLocalStore();
+initializeLocalStore().catch(console.error);
 
 /* =========================================================================
    1. AUDIT LOGS (FR-08.2)
@@ -130,9 +206,9 @@ export async function logAudit(user, action, details) {
     timestamp: new Date().toISOString()
   };
 
-  const logs = getLocal(STORAGE_KEYS.LOGS, INITIAL_AUDIT_LOGS);
+  const logs = await getLocal(STORAGE_KEYS.LOGS, INITIAL_AUDIT_LOGS);
   logs.unshift(logItem);
-  setLocal(STORAGE_KEYS.LOGS, logs.slice(0, 200));
+  await setLocal(STORAGE_KEYS.LOGS, logs.slice(0, 200));
 
   if (isRealFirebaseConfigured() && db) {
     try {
@@ -156,37 +232,37 @@ export async function getAuditLogs() {
       console.warn("Firestore audit logs read failed, fallback to local:", e);
     }
   }
-  return getLocal(STORAGE_KEYS.LOGS, INITIAL_AUDIT_LOGS);
+  return await getLocal(STORAGE_KEYS.LOGS, INITIAL_AUDIT_LOGS);
 }
 
 /* =========================================================================
    2. MASTER DATA (FR-02)
    ========================================================================= */
 export async function getFakultas() {
-  return getLocal(STORAGE_KEYS.FAKULTAS, INITIAL_FAKULTAS);
+  return await getLocal(STORAGE_KEYS.FAKULTAS, INITIAL_FAKULTAS);
 }
 
 export async function getProdi() {
-  return getLocal(STORAGE_KEYS.PRODI, INITIAL_PRODI);
+  return await getLocal(STORAGE_KEYS.PRODI, INITIAL_PRODI);
 }
 
 export async function getTahunAkademik() {
-  return getLocal(STORAGE_KEYS.TA, INITIAL_TA);
+  return await getLocal(STORAGE_KEYS.TA, INITIAL_TA);
 }
 
 export async function setTahunAkademikActive(taId, user) {
-  const list = getLocal(STORAGE_KEYS.TA, INITIAL_TA);
+  const list = await getLocal(STORAGE_KEYS.TA, INITIAL_TA);
   const updated = list.map(item => ({
     ...item,
     isActive: item.id === taId
   }));
-  setLocal(STORAGE_KEYS.TA, updated);
+  await setLocal(STORAGE_KEYS.TA, updated);
   await logAudit(user, 'UPDATE_TA', `Mengaktifkan Tahun Akademik ID: ${taId}`);
   return updated;
 }
 
 export async function addTahunAkademik(taData, user) {
-  const list = getLocal(STORAGE_KEYS.TA, INITIAL_TA);
+  const list = await getLocal(STORAGE_KEYS.TA, INITIAL_TA);
   const newTa = {
     ...taData,
     id: taData.id || `ta-${Date.now()}`,
@@ -200,13 +276,13 @@ export async function addTahunAkademik(taData, user) {
     });
   }
   list.unshift(newTa);
-  setLocal(STORAGE_KEYS.TA, list);
+  await setLocal(STORAGE_KEYS.TA, list);
   await logAudit(user, 'CREATE_TA', `Membuka/Menambahkan Semester Baru: ${newTa.namaTa} (${newTa.kodeTa})`);
   return list;
 }
 
 export async function toggleTahunAkademikStatus(taId, user) {
-  const list = getLocal(STORAGE_KEYS.TA, INITIAL_TA);
+  const list = await getLocal(STORAGE_KEYS.TA, INITIAL_TA);
   let targetTa = list.find(t => t.id === taId);
   if (!targetTa) return list;
 
@@ -230,7 +306,7 @@ export async function toggleTahunAkademikStatus(taId, user) {
     return item;
   });
 
-  setLocal(STORAGE_KEYS.TA, updated);
+  await setLocal(STORAGE_KEYS.TA, updated);
   await logAudit(
     user, 
     willBeActive ? 'BUKA_SEMESTER' : 'TUTUP_SEMESTER', 
@@ -240,58 +316,58 @@ export async function toggleTahunAkademikStatus(taId, user) {
 }
 
 export async function deleteTahunAkademik(taId, user) {
-  const list = getLocal(STORAGE_KEYS.TA, INITIAL_TA);
+  const list = await getLocal(STORAGE_KEYS.TA, INITIAL_TA);
   const target = list.find(t => t.id === taId);
   const updated = list.filter(t => t.id !== taId);
-  setLocal(STORAGE_KEYS.TA, updated);
+  await setLocal(STORAGE_KEYS.TA, updated);
   await logAudit(user, 'DELETE_TA', `Menghapus Semester: ${target?.namaTa || taId}`);
   return updated;
 }
 
 export async function getMataKuliah() {
-  return getLocal(STORAGE_KEYS.MK, INITIAL_MK);
+  return await getLocal(STORAGE_KEYS.MK, INITIAL_MK);
 }
 
 export async function addMataKuliah(mkData, user) {
-  const list = getLocal(STORAGE_KEYS.MK, INITIAL_MK);
+  const list = await getLocal(STORAGE_KEYS.MK, INITIAL_MK);
   const newMk = {
     ...mkData,
     id: `mk-${Date.now()}`
   };
   list.push(newMk);
-  setLocal(STORAGE_KEYS.MK, list);
+  await setLocal(STORAGE_KEYS.MK, list);
   await logAudit(user, 'CREATE_MK', `Menambahkan Mata Kuliah ${newMk.kodeMk} - ${newMk.namaMk}`);
   return newMk;
 }
 
 export async function updateMataKuliah(mkId, updatedData, user) {
-  const list = getLocal(STORAGE_KEYS.MK, INITIAL_MK);
+  const list = await getLocal(STORAGE_KEYS.MK, INITIAL_MK);
   const updated = list.map(item => {
     if (item.id === mkId) {
       return { ...item, ...updatedData };
     }
     return item;
   });
-  setLocal(STORAGE_KEYS.MK, updated);
+  await setLocal(STORAGE_KEYS.MK, updated);
   await logAudit(user, 'UPDATE_MK', `Memperbarui Mata Kuliah ${updatedData.kodeMk || ''} - ${updatedData.namaMk || ''}`);
   return updated;
 }
 
 export async function deleteMataKuliah(mkId, user) {
-  const list = getLocal(STORAGE_KEYS.MK, INITIAL_MK);
+  const list = await getLocal(STORAGE_KEYS.MK, INITIAL_MK);
   const target = list.find(m => m.id === mkId);
   const updated = list.filter(m => m.id !== mkId);
-  setLocal(STORAGE_KEYS.MK, updated);
+  await setLocal(STORAGE_KEYS.MK, updated);
   await logAudit(user, 'DELETE_MK', `Menghapus Mata Kuliah: ${target?.namaMk || mkId} (${target?.kodeMk || ''})`);
   return updated;
 }
 
 export async function getUsers() {
-  return getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
+  return await getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
 }
 
 export async function createUser(userData, currentUser) {
-  const list = getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
+  const list = await getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
   const currentRole = (currentUser?.role || '').toUpperCase();
   const isSuperAdmin = currentRole === 'SUPER_ADMIN' || currentRole === 'ADMIN';
   const isBaa = currentRole === 'ADMIN_AKADEMIK' || currentRole === 'AKADEMIK' || currentRole === 'BAA';
@@ -328,7 +404,7 @@ export async function createUser(userData, currentUser) {
   };
 
   list.push(newUser);
-  setLocal(STORAGE_KEYS.USERS, list);
+  await setLocal(STORAGE_KEYS.USERS, list);
   await logAudit(
     currentUser, 
     'CREATE_USER', 
@@ -338,7 +414,7 @@ export async function createUser(userData, currentUser) {
 }
 
 export async function updateUser(uid, userData, currentUser) {
-  const list = getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
+  const list = await getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
   const target = list.find(u => u.uid === uid);
   if (!target) throw new Error("Pengguna tidak ditemukan.");
 
@@ -374,7 +450,7 @@ export async function updateUser(uid, userData, currentUser) {
     return u;
   });
 
-  setLocal(STORAGE_KEYS.USERS, updated);
+  await setLocal(STORAGE_KEYS.USERS, updated);
   await logAudit(
     currentUser, 
     'UPDATE_USER', 
@@ -384,7 +460,7 @@ export async function updateUser(uid, userData, currentUser) {
 }
 
 export async function deleteUser(uid, currentUser) {
-  const list = getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
+  const list = await getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
   const target = list.find(u => u.uid === uid);
   if (!target) throw new Error("Pengguna tidak ditemukan.");
 
@@ -404,7 +480,7 @@ export async function deleteUser(uid, currentUser) {
   }
 
   const updated = list.filter(u => u.uid !== uid);
-  setLocal(STORAGE_KEYS.USERS, updated);
+  await setLocal(STORAGE_KEYS.USERS, updated);
   await logAudit(
     currentUser, 
     'DELETE_USER', 
@@ -414,7 +490,7 @@ export async function deleteUser(uid, currentUser) {
 }
 
 export async function resetUserPassword(uid, newPassword, currentUser) {
-  const list = getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
+  const list = await getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
   const target = list.find(u => u.uid === uid);
   if (!target) throw new Error("Pengguna tidak ditemukan.");
 
@@ -437,7 +513,7 @@ export async function resetUserPassword(uid, newPassword, currentUser) {
     return u;
   });
 
-  setLocal(STORAGE_KEYS.USERS, updated);
+  await setLocal(STORAGE_KEYS.USERS, updated);
   await logAudit(
     currentUser, 
     'RESET_PASSWORD', 
@@ -447,7 +523,7 @@ export async function resetUserPassword(uid, newPassword, currentUser) {
 }
 
 export async function registerStudent(studentData) {
-  const list = getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
+  const list = await getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
   const emailClean = (studentData.email || '').trim().toLowerCase();
 
   const exists = list.some(u => u.email?.toLowerCase() === emailClean);
@@ -473,7 +549,7 @@ export async function registerStudent(studentData) {
   };
 
   list.push(newStudent);
-  setLocal(STORAGE_KEYS.USERS, list);
+  await setLocal(STORAGE_KEYS.USERS, list);
   await logAudit(
     newStudent, 
     'REGISTER_STUDENT', 
@@ -483,7 +559,7 @@ export async function registerStudent(studentData) {
 }
 
 export async function toggleUserActive(uid, user) {
-  const list = getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
+  const list = await getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
   let statusChangedTo = false;
   const target = list.find(u => u.uid === uid);
   if (!target) return list;
@@ -503,25 +579,25 @@ export async function toggleUserActive(uid, user) {
     }
     return u;
   });
-  setLocal(STORAGE_KEYS.USERS, updated);
+  await setLocal(STORAGE_KEYS.USERS, updated);
   await logAudit(user, 'TOGGLE_USER_STATUS', `Mengubah status user ${target.name} menjadi ${statusChangedTo ? 'AKTIF' : 'NON-AKTIF'}`);
   return updated;
 }
 
 export async function batchImportData(type, items, user) {
   if (type === 'MATA_KULIAH') {
-    const current = getLocal(STORAGE_KEYS.MK, INITIAL_MK);
+    const current = await getLocal(STORAGE_KEYS.MK, INITIAL_MK);
     const updated = [...current, ...items.map(i => ({ ...i, id: i.id || `mk-${Date.now()}-${Math.random().toString(36).substr(2, 5)}` }))];
-    setLocal(STORAGE_KEYS.MK, updated);
+    await setLocal(STORAGE_KEYS.MK, updated);
   } else if (type === 'DOSEN' || type === 'MAHASISWA') {
-    const current = getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
+    const current = await getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
     const updated = [...current, ...items.map(i => ({ 
       ...i, 
       uid: i.uid || `user-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       role: type === 'DOSEN' ? 'DOSEN' : 'MAHASISWA',
       isActive: true 
     }))];
-    setLocal(STORAGE_KEYS.USERS, updated);
+    await setLocal(STORAGE_KEYS.USERS, updated);
   }
   await logAudit(user, 'BATCH_IMPORT', `Impor massal ${items.length} data tipe ${type}`);
   return true;
@@ -531,16 +607,16 @@ export async function batchImportData(type, items, user) {
    3. KELAS KULIAH & 16 PERTEMUAN (FR-03)
    ========================================================================= */
 export async function getClasses() {
-  return getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
+  return await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
 }
 
 export async function getClassById(classId) {
-  const list = getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
+  const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
   return list.find(c => c.id === classId) || null;
 }
 
 export async function createClass(classData, user) {
-  const list = getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
+  const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
   const classId = `kelas-${Date.now()}`;
   
   // FR-03.2 Otomatis generate 16 pertemuan
@@ -557,14 +633,14 @@ export async function createClass(classData, user) {
   };
 
   list.push(newClass);
-  setLocal(STORAGE_KEYS.CLASSES, list);
+  await setLocal(STORAGE_KEYS.CLASSES, list);
 
   await logAudit(user, 'CREATE_CLASS', `Membuka kelas ${newClass.namaMk} (${newClass.namaKelas}) dengan otomatisasi 16 pertemuan.`);
   return newClass;
 }
 
 export async function enrollStudent(classId, mhsId, user) {
-  const list = getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
+  const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
   const classItem = list.find(c => c.id === classId);
   if (!classItem) throw new Error("Kelas tidak ditemukan");
 
@@ -578,13 +654,13 @@ export async function enrollStudent(classId, mhsId, user) {
   }
 
   classItem.enrolledStudents.push(mhsId);
-  setLocal(STORAGE_KEYS.CLASSES, list);
+  await setLocal(STORAGE_KEYS.CLASSES, list);
   await logAudit(user, 'ENROLL_STUDENT', `Mendaftarkan mahasiswa ${mhsId} ke kelas ${classItem.namaMk}`);
   return classItem;
 }
 
 export async function updateMeeting(classId, meetingNumber, updateFields, user) {
-  const list = getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
+  const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
   const classItem = list.find(c => c.id === classId);
   if (!classItem) throw new Error("Kelas tidak ditemukan");
 
@@ -596,7 +672,7 @@ export async function updateMeeting(classId, meetingNumber, updateFields, user) 
     ...updateFields
   };
 
-  setLocal(STORAGE_KEYS.CLASSES, list);
+  await setLocal(STORAGE_KEYS.CLASSES, list);
   await logAudit(user, 'UPDATE_MEETING', `Memperbarui Pertemuan ${meetingNumber} kelas ${classItem.namaMk}`);
   return classItem.meetings[meetingIndex];
 }
@@ -605,7 +681,7 @@ export async function updateMeeting(classId, meetingNumber, updateFields, user) 
    4. BAHAN AJAR & VIDEO MEDIA (FR-04)
    ========================================================================= */
 export async function addMeetingMaterial(classId, meetingNumber, materialData, user) {
-  const list = getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
+  const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
   const classItem = list.find(c => c.id === classId);
   if (!classItem) throw new Error("Kelas tidak ditemukan");
 
@@ -620,13 +696,13 @@ export async function addMeetingMaterial(classId, meetingNumber, materialData, u
   };
   meeting.materials.push(newMaterial);
 
-  setLocal(STORAGE_KEYS.CLASSES, list);
+  await setLocal(STORAGE_KEYS.CLASSES, list);
   await logAudit(user, 'UPLOAD_MATERIAL', `Sematkan materi "${newMaterial.judul}" pada Pertemuan ${meetingNumber} kelas ${classItem.namaMk}`);
   return newMaterial;
 }
 
 export async function deleteMeetingMaterial(classId, meetingNumber, materialId, user) {
-  const list = getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
+  const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
   const classItem = list.find(c => c.id === classId);
   if (!classItem) throw new Error("Kelas tidak ditemukan");
 
@@ -635,7 +711,7 @@ export async function deleteMeetingMaterial(classId, meetingNumber, materialId, 
 
   meeting.materials = (meeting.materials || []).filter(m => m.id !== materialId);
 
-  setLocal(STORAGE_KEYS.CLASSES, list);
+  await setLocal(STORAGE_KEYS.CLASSES, list);
   await logAudit(user, 'DELETE_MATERIAL', `Menghapus materi ID ${materialId} pada Pertemuan ${meetingNumber} kelas ${classItem.namaMk}`);
   return true;
 }
@@ -644,7 +720,7 @@ export async function deleteMeetingMaterial(classId, meetingNumber, materialId, 
    5. PRESENSI PERTEMUAN (FR-05)
    ========================================================================= */
 export async function saveMeetingAttendance(classId, meetingNumber, attendances, user) {
-  const list = getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
+  const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
   const classItem = list.find(c => c.id === classId);
   if (!classItem) throw new Error("Kelas tidak ditemukan");
 
@@ -652,7 +728,7 @@ export async function saveMeetingAttendance(classId, meetingNumber, attendances,
   if (!meeting) throw new Error("Pertemuan tidak ditemukan");
 
   meeting.attendances = attendances;
-  setLocal(STORAGE_KEYS.CLASSES, list);
+  await setLocal(STORAGE_KEYS.CLASSES, list);
   await logAudit(user, 'INPUT_ATTENDANCE', `Input presensi pertemuan ${meetingNumber} kelas ${classItem.namaMk}`);
   return attendances;
 }
@@ -661,7 +737,7 @@ export async function saveMeetingAttendance(classId, meetingNumber, attendances,
    6. PENGUMPULAN TUGAS & PENILAIAN (FR-06)
    ========================================================================= */
 export async function submitAssignment(classId, meetingNumber, submissionData, user) {
-  const list = getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
+  const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
   const classItem = list.find(c => c.id === classId);
   if (!classItem) throw new Error("Kelas tidak ditemukan");
 
@@ -677,13 +753,13 @@ export async function submitAssignment(classId, meetingNumber, submissionData, u
     submittedAt: new Date().toISOString()
   };
 
-  setLocal(STORAGE_KEYS.CLASSES, list);
+  await setLocal(STORAGE_KEYS.CLASSES, list);
   await logAudit(user, 'SUBMIT_TASK', `Mahasiswa ${user.name} mengumpulkan tugas Pertemuan ${meetingNumber}`);
   return meeting.submissions[user.uid];
 }
 
 export async function gradeSubmission(classId, meetingNumber, mhsId, nilai, feedback, user) {
-  const list = getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
+  const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
   const classItem = list.find(c => c.id === classId);
   if (!classItem) throw new Error("Kelas tidak ditemukan");
 
@@ -696,7 +772,7 @@ export async function gradeSubmission(classId, meetingNumber, mhsId, nilai, feed
   meeting.submissions[mhsId].catatanDosen = feedback;
   meeting.submissions[mhsId].gradedAt = new Date().toISOString();
 
-  setLocal(STORAGE_KEYS.CLASSES, list);
+  await setLocal(STORAGE_KEYS.CLASSES, list);
   await logAudit(user, 'GRADE_TASK', `Memberikan nilai ${nilai} untuk tugas mahasiswa ${mhsId} pertemuan ${meetingNumber}`);
   return meeting.submissions[mhsId];
 }
@@ -705,7 +781,7 @@ export async function gradeSubmission(classId, meetingNumber, mhsId, nilai, feed
    7. BUKU NILAI OTOMATIS (GRADEBOOK) (FR-07)
    ========================================================================= */
 export async function updateStudentGrade(classId, mhsId, scores, user) {
-  const list = getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
+  const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
   const classItem = list.find(c => c.id === classId);
   if (!classItem) throw new Error("Kelas tidak ditemukan");
 
@@ -719,7 +795,7 @@ export async function updateStudentGrade(classId, mhsId, scores, user) {
     overrideGrade
   );
 
-  const usersList = getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
+  const usersList = await getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
   const mhs = usersList.find(u => u.uid === mhsId) || {};
 
   classItem.grades[mhsId] = {
@@ -729,7 +805,7 @@ export async function updateStudentGrade(classId, mhsId, scores, user) {
     ...calculated
   };
 
-  setLocal(STORAGE_KEYS.CLASSES, list);
+  await setLocal(STORAGE_KEYS.CLASSES, list);
   await logAudit(user, 'UPDATE_GRADE', `Memperbarui nilai akhir OBE mahasiswa ${mhs.name || mhsId} di kelas ${classItem.namaMk}: ${calculated.gradeLabel || calculated.nilaiHuruf}`);
   return classItem.grades[mhsId];
 }
@@ -739,9 +815,9 @@ export async function updateStudentGrade(classId, mhsId, scores, user) {
    Skor = (Total Materi * 2) + (Total Presensi * 1) + (Total Tugas Dinilai * 3)
    ========================================================================= */
 export async function calculateLecturersActivityScores() {
-  const users = getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
+  const users = await getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
   const lecturers = users.filter(u => u.role === 'DOSEN');
-  const classes = getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
+  const classes = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
 
   return lecturers.map(dosen => {
     const dosenClasses = classes.filter(c => c.dosenId === dosen.uid);
@@ -785,7 +861,7 @@ export async function calculateLecturersActivityScores() {
    9. ATUR MEDIA PERKULIAHAN DARING PER PERTEMUAN
    ========================================================================= */
 export async function updateMeetingMedia(classId, meetingNumber, mediaData, user) {
-  const list = getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
+  const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
   const classItem = list.find(c => c.id === classId);
   if (!classItem) throw new Error("Kelas tidak ditemukan");
 
@@ -798,7 +874,7 @@ export async function updateMeetingMedia(classId, meetingNumber, mediaData, user
   meeting.googleMeetUrl = mediaData.googleMeetUrl || '';
   meeting.mediaTitle = mediaData.mediaTitle || '';
 
-  setLocal(STORAGE_KEYS.CLASSES, list);
+  await setLocal(STORAGE_KEYS.CLASSES, list);
   await logAudit(user, 'UPDATE_MEDIA', `Mengatur tautan media daring (${mediaData.videoType}) pada Pertemuan ${meetingNumber} kelas ${classItem.namaMk}`);
   return meeting;
 }
@@ -822,7 +898,7 @@ export async function syncCollectionsToLiveFirestore(onProgress) {
   updateStatus("Memulai proses sinkronisasi koleksi ke Cloud Firestore...");
 
   // 1. Users
-  const users = getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
+  const users = await getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
   for (const u of users) {
     const userRef = doc(db, "users", u.uid);
     batch.set(userRef, {
@@ -840,7 +916,7 @@ export async function syncCollectionsToLiveFirestore(onProgress) {
   updateStatus(`Menyiapkan ${users.length} dokumen koleksi 'users'...`);
 
   // 2. Tahun Akademik
-  const tas = getLocal(STORAGE_KEYS.TA, INITIAL_TA);
+  const tas = await getLocal(STORAGE_KEYS.TA, INITIAL_TA);
   for (const t of tas) {
     const taRef = doc(db, "tahun_akademik", t.id);
     batch.set(taRef, t, { merge: true });
@@ -848,7 +924,7 @@ export async function syncCollectionsToLiveFirestore(onProgress) {
   updateStatus(`Menyiapkan ${tas.length} dokumen koleksi 'tahun_akademik'...`);
 
   // 3. Prodi
-  const prodis = getLocal(STORAGE_KEYS.PRODI, INITIAL_PRODI);
+  const prodis = await getLocal(STORAGE_KEYS.PRODI, INITIAL_PRODI);
   for (const p of prodis) {
     const prodiRef = doc(db, "prodi", p.id);
     batch.set(prodiRef, p, { merge: true });
@@ -856,7 +932,7 @@ export async function syncCollectionsToLiveFirestore(onProgress) {
   updateStatus(`Menyiapkan ${prodis.length} dokumen koleksi 'prodi'...`);
 
   // 4. Mata Kuliah
-  const mks = getLocal(STORAGE_KEYS.MK, INITIAL_MK);
+  const mks = await getLocal(STORAGE_KEYS.MK, INITIAL_MK);
   for (const m of mks) {
     const mkRef = doc(db, "mata_kuliah", m.id);
     batch.set(mkRef, m, { merge: true });
@@ -864,7 +940,7 @@ export async function syncCollectionsToLiveFirestore(onProgress) {
   updateStatus(`Menyiapkan ${mks.length} dokumen koleksi 'mata_kuliah'...`);
 
   // 5. Kelas Kuliah
-  const classes = getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
+  const classes = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
   for (const c of classes) {
     const classRef = doc(db, "kelas_kuliah", c.id);
     batch.set(classRef, {

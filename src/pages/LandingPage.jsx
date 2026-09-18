@@ -32,12 +32,10 @@ import {
   Menu,
   X
 } from 'lucide-react';
-import FirebaseSettingsModal from '../components/common/FirebaseSettingsModal';
 
 export default function LandingPage({ onGoToLogin }) {
   const { loginAsRole } = useAuth();
   const [activeFaq, setActiveFaq] = useState(null);
-  const [showConfigModal, setShowConfigModal] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleQuickLogin = (role) => {
@@ -50,7 +48,7 @@ export default function LandingPage({ onGoToLogin }) {
       badge: 'Super Admin',
       badgeColor: 'bg-purple-100 text-purple-800 border-purple-200',
       title: 'Administrator Sistem',
-      email: 'admin@stienas.ac.id',
+      email: 'nama@gmail.com',
       password: 'admin126',
       description: 'Akses penuh tata kelola master akademik OBE, integrasi cloud database Firebase, impor data massal JSON, dan audit log.',
       features: ['Master Kurikulum OBE & CPL/CPMK', 'Konfigurasi Cloud Firebase BaaS', 'Audit Trail & Manajemen Pengguna']
@@ -786,11 +784,6 @@ export default function LandingPage({ onGoToLogin }) {
           </div>
         </div>
       </footer>
-
-      {showConfigModal && (
-        <FirebaseSettingsModal onClose={() => setShowConfigModal(false)} />
-      )}
-
     </div>
   );
 }

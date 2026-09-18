@@ -7,7 +7,7 @@ import {
   signOut as firebaseSignOut, 
   onAuthStateChanged 
 } from "firebase/auth";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, getDocs } from "firebase/firestore";
 import { auth, db, isRealFirebaseConfigured } from "./config.js";
 import { INITIAL_USERS } from "../utils/seedData.js";
 
@@ -36,14 +36,44 @@ export async function loginUser(identifier, password) {
     throw new Error("Silakan masukkan kata sandi akun Anda.");
   }
 
-  // 1. Kumpulkan seluruh pengguna: gabungkan INITIAL_USERS dengan data tersimpan di localStorage
+  // 1. Kumpulkan seluruh pengguna: gabungkan INITIAL_USERS dengan data dari Firestore (jika ada) dan localStorage
   let combinedUsers = [...INITIAL_USERS];
   try {
+    let fbUsers = [];
+    let fbLoaded = false;
+    if (isRealFirebaseConfigured() && db) {
+       try {
+         const snap = await getDocs(collection(db, "users"));
+         if (!snap.empty) {
+           fbUsers = snap.docs.map(d => {
+             const data = d.data();
+             if (!data.uid && !data.id) data.id = d.id;
+             return data;
+           });
+           localStorage.setItem('STIE_LMS_USERS', JSON.stringify(fbUsers));
+           fbLoaded = true;
+         }
+       } catch(e) { console.warn(e); }
+    }
+    
     const stored = localStorage.getItem('STIE_LMS_USERS');
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed)) {
-        parsed.forEach(storedU => {
+    let parsedUsers = fbLoaded ? fbUsers : (stored ? JSON.parse(stored) : []);
+    
+    if (!fbLoaded && parsedUsers.length > 0 && isRealFirebaseConfigured() && db) {
+       try {
+         const { writeBatch, doc } = await import("firebase/firestore");
+         const batch = writeBatch(db);
+         parsedUsers.forEach(u => {
+           const id = u.uid || u.id;
+           if (id) batch.set(doc(db, "users", String(id)), u, { merge: true });
+         });
+         await batch.commit();
+       } catch(e) { console.warn("Failed to push local users to FB", e); }
+    }
+
+    if (parsedUsers.length > 0) {
+      if (Array.isArray(parsedUsers)) {
+        parsedUsers.forEach(storedU => {
           const idx = combinedUsers.findIndex(u => 
             u.uid === storedU.uid || 
             (u.email && storedU.email && u.email.toLowerCase() === storedU.email.toLowerCase())

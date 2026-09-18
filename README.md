@@ -93,3 +93,7 @@ Setiap kali kode di-push ke branch `main`, GitHub Actions akan:
 - **Aturan Firestore**: Lihat berkas [`firestore.rules`](firestore.rules).
 - **Aturan Storage**: Lihat berkas [`storage.rules`](storage.rules).
 - **Setup Kredensial**: Pengguna dapat memasukkan kredensial Firebase langsung dari antarmuka aplikasi melalui tombol **Firebase: Demo/Config** pada Header atau via modal pengaturan.
+
+
+--------------
+pada Master Seluruh Akun saat saya menambahkan akun dosen maupun mahasiswa, data tersebut tidak tersimpan secara sempurna pada data base, tolong singkronkan supaya data tersebut tersimpan, begitu pula pada kelas perkuliahan, maata kuliah yang sudah ditambahkan agar disimpan dalam database, lalukan juga singkronisasi dengan penilaian, mahasiswa, dosen, akademik dan admin. semuanya saling terhubung/sync

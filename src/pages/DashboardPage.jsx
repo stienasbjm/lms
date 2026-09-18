@@ -234,49 +234,48 @@ export default function DashboardPage({ onNavigate }) {
           </div>
         </div>
 
-        {/* Audit Log / Aktivitas Terbaru */}
-        <div className="space-y-4">
-          <div className="flex justify-between items-center">
-            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-              <Clock className="w-4 h-4 text-brand-700" />
-              Aktivitas Terkini
-            </h3>
-            {isAdmin && (
+        {/* Audit Log / Aktivitas Terbaru - Hanya untuk Admin */}
+        {isAdmin && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <Clock className="w-4 h-4 text-brand-700" />
+                Aktivitas Terkini
+              </h3>
               <button 
                 onClick={() => onNavigate('audit-logs')}
                 className="text-xs text-brand-700 font-semibold hover:underline"
               >
                 Log Lengkap
               </button>
-            )}
-          </div>
-
-          <div className="bg-white rounded-xl border border-slate-200 p-4 divide-y divide-slate-100 shadow-sm">
-            {recentLogs.map(log => (
-              <div key={log.id} className="py-2.5 first:pt-0 last:pb-0 text-xs">
-                <div className="flex justify-between text-slate-400 text-[10px] mb-0.5">
-                  <span className="font-semibold text-brand-700">{log.userName}</span>
-                  <span>{new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                </div>
-                <div className="text-slate-700 font-medium line-clamp-2">
-                  {log.details}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Quick Notice Card */}
-          <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs">
-            <div className="font-bold flex items-center gap-1.5 mb-1">
-              <Award className="w-4 h-4 text-amber-600" />
-              Standarisasi 16 Pertemuan
             </div>
-            <p className="text-[11px] text-amber-800 leading-relaxed">
-              Perkuliahan semester berjalan wajib mematuhi 16 sesi terstruktur: Pertemuan 8 adalah Evaluasi UTS dan Pertemuan 16 adalah Evaluasi UAS.
-            </p>
-          </div>
 
-        </div>
+            <div className="bg-white rounded-xl border border-slate-200 p-4 divide-y divide-slate-100 shadow-sm">
+              {recentLogs.map(log => (
+                <div key={log.id} className="py-2.5 first:pt-0 last:pb-0 text-xs">
+                  <div className="flex justify-between text-slate-400 text-[10px] mb-0.5">
+                    <span className="font-semibold text-brand-700">{log.userName}</span>
+                    <span>{new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  </div>
+                  <div className="text-slate-700 font-medium line-clamp-2">
+                    {log.details}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Quick Notice Card */}
+            <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs">
+              <div className="font-bold flex items-center gap-1.5 mb-1">
+                <Award className="w-4 h-4 text-amber-600" />
+                Standarisasi 16 Pertemuan
+              </div>
+              <p className="text-[11px] text-amber-800 leading-relaxed">
+                Perkuliahan semester berjalan wajib mematuhi 16 sesi terstruktur: Pertemuan 8 adalah Evaluasi UTS dan Pertemuan 16 adalah Evaluasi UAS.
+              </p>
+            </div>
+          </div>
+        )}
 
       </div>
 
