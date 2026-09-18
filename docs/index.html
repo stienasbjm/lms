@@ -1,7 +1,14 @@
 <!doctype html>
 <html lang="id">
   <head>
+    <script>
+      // 1. Enforce trailing slash on /docs to guarantee relative assets (./assets/...) resolve accurately
+      if (window.location.hostname.endsWith('github.io') && window.location.pathname.endsWith('/docs')) {
+        window.location.replace(window.location.pathname + '/' + window.location.search + window.location.hash);
+      }
+    </script>
     <meta charset="UTF-8" />
+    
     <link rel="icon" type="image/png" href="./favicon.png" />
     <link rel="shortcut icon" href="./favicon.png" />
     <link rel="apple-touch-icon" href="./logo-stienas.png" />
@@ -12,7 +19,6 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    
     <script type="module" crossorigin src="./assets/index-DtSwQYwF.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index-CjkZBkEd.css">
   </head>
