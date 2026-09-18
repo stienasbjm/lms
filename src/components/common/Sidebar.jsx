@@ -182,8 +182,6 @@ export default function Sidebar({ activeTab, onSelectTab, isOpen = false, onClos
         {/* Info Footer STIE Nasional */}
         <div className="pt-4 border-t border-slate-200 text-center">
           <div className="text-[11px] font-bold text-slate-700">STIE NASIONAL BANJARMASIN</div>
-          <div className="text-[10px] text-slate-400 mt-0.5">Frontend: GitHub Pages CDN</div>
-          <div className="text-[10px] text-slate-400">Backend: Google Cloud Firebase</div>
         </div>
       </aside>
     </>

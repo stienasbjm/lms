@@ -29,7 +29,7 @@ export default function ProfileModal({ onClose }) {
     email: user?.email || '',
     nim: user?.nim || '',
     nidn: user?.nidn || '',
-    angkatan: user?.angkatan || (user?.nim ? calculateAcademicStanding(user.nim).angkatan : 2024),
+    angkatan: user?.angkatan || (user?.nim ? calculateAcademicStanding(user.nim).angkatan : 2026),
     phone: user?.phone || '',
     avatarUrl: user?.avatarUrl || ''
   });

@@ -17,6 +17,7 @@ import {
   BookOpen
 } from 'lucide-react';
 import { registerStudent } from '../firebase/firestoreService';
+import { requestPasswordReset } from '../firebase/authService';
 import { 
   calculateAcademicStanding, 
   generateSuggestedNim, 
@@ -45,8 +46,8 @@ export default function LoginPage({ onBackToLanding }) {
     password: '',
     confirmPassword: '',
     prodiId: 'prodi-s1-manajemen',
-    angkatan: 2024,
-    nim: generateSuggestedNim(2024, 'prodi-s1-manajemen'),
+    angkatan: 2026,
+    nim: generateSuggestedNim(2026, 'prodi-s1-manajemen'),
     phone: ''
   });
 
@@ -73,22 +74,27 @@ export default function LoginPage({ onBackToLanding }) {
     setErrorMessage('');
     setSuccessMessage('');
     
-    if (!identifier) {
-      setErrorMessage('Harap masukkan alamat email Anda.');
-      showErrorAlert('Email Diperlukan', 'Harap masukkan alamat email akun Anda untuk menerima tautan reset kata sandi.');
+    const trimmedId = (identifier || '').trim();
+    if (!trimmedId) {
+      setErrorMessage('Harap masukkan alamat email, NIM, atau username Anda.');
+      showErrorAlert('Identitas Diperlukan', 'Harap masukkan alamat email terdaftar, NIM, atau username akun Anda.');
       return;
     }
 
     setLoading(true);
-    // Simulasi pengiriman email reset password
-    setTimeout(() => {
-      setLoading(false);
-      const msg = `Tautan reset kata sandi telah dikirim ke ${identifier}. Silakan cek kotak masuk Anda.`;
+    try {
+      const res = await requestPasswordReset(trimmedId);
+      const msg = `Tautan reset kata sandi telah dikirim ke alamat email resmi terdaftar: ${res.email}. Silakan periksa kotak masuk (Inbox) atau folder Spam email Anda.`;
       setSuccessMessage(msg);
       showSuccessAlert('Tautan Reset Terkirim', msg);
-      // Reset identifier setelah sukses agar user tidak bingung
       setIdentifier('');
-    }, 1200);
+    } catch (err) {
+      const msg = err.message || "Gagal memproses permintaan reset kata sandi.";
+      setErrorMessage(msg);
+      showErrorAlert('Gagal Reset Kata Sandi', msg);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleRegisterSubmit = async (e) => {
@@ -322,21 +328,24 @@ export default function LoginPage({ onBackToLanding }) {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Alamat Email Terdaftar
+                  Email Terdaftar / NIM / Username Akun
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                     <Mail className="w-4 h-4" />
                   </div>
                   <input
-                    type="email"
+                    type="text"
                     required
                     value={identifier}
                     onChange={(e) => setIdentifier(e.target.value)}
-                    placeholder="email.anda@stienas.ac.id"
+                    placeholder="Masukkan Email, NIM (misal: 261011...), atau Username"
                     className="block w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none transition-all"
                   />
                 </div>
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  Sistem akan otomatis mendeteksi dan mengirimkan instruksi reset ke email resmi akun tersebut.
+                </span>
               </div>
 
               <button
@@ -469,7 +478,7 @@ export default function LoginPage({ onBackToLanding }) {
                     className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-slate-50 font-bold"
                   >
                     {ANGKATAN_OPTIONS.map(opt => (
-                      <option key={opt.tahun} value={opt.tahun}>Tahun {opt.tahun}</option>
+                      <option key={opt.tahun} value={opt.tahun}>{opt.label}</option>
                     ))}
                   </select>
                 </div>
@@ -489,7 +498,7 @@ export default function LoginPage({ onBackToLanding }) {
                 <input
                   type="text"
                   required
-                  placeholder="Contoh: 241011088"
+                  placeholder="Contoh: 261011001"
                   value={regForm.nim}
                   onChange={e => setRegForm({ ...regForm, nim: e.target.value })}
                   className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono font-bold text-slate-900 bg-white"

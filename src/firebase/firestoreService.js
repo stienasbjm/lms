@@ -639,6 +639,66 @@ export async function createClass(classData, user) {
   return newClass;
 }
 
+export async function updateClass(classId, classData, user) {
+  const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
+  const index = list.findIndex(c => c.id === classId);
+  if (index === -1) throw new Error("Kelas perkuliahan tidak ditemukan");
+
+  const currentRole = (user?.role || '').toUpperCase();
+  const isSuperAdmin = currentRole === 'SUPER_ADMIN' || currentRole === 'ADMIN';
+  const isBaa = currentRole === 'ADMIN_AKADEMIK' || currentRole === 'AKADEMIK' || currentRole === 'BAA';
+  if (!isSuperAdmin && !isBaa) {
+    throw new Error("Hanya Administrator dan BAA yang memiliki wewenang mengubah data kelas perkuliahan.");
+  }
+
+  list[index] = {
+    ...list[index],
+    ...classData
+  };
+
+  await setLocal(STORAGE_KEYS.CLASSES, list);
+
+  if (isRealFirebaseConfigured() && db) {
+    try {
+      const classDocRef = doc(db, "classes", classId);
+      await setDoc(classDocRef, list[index], { merge: true });
+    } catch (e) {
+      console.warn("Firestore updateClass sync error:", e);
+    }
+  }
+
+  await logAudit(user, 'UPDATE_CLASS', `Memperbarui data kelas ${list[index].namaMk} (${list[index].namaKelas})`);
+  return list[index];
+}
+
+export async function deleteClass(classId, user) {
+  const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
+  const target = list.find(c => c.id === classId);
+  if (!target) throw new Error("Kelas perkuliahan tidak ditemukan");
+
+  const currentRole = (user?.role || '').toUpperCase();
+  const isSuperAdmin = currentRole === 'SUPER_ADMIN' || currentRole === 'ADMIN';
+  const isBaa = currentRole === 'ADMIN_AKADEMIK' || currentRole === 'AKADEMIK' || currentRole === 'BAA';
+  if (!isSuperAdmin && !isBaa) {
+    throw new Error("Hanya Administrator dan BAA yang memiliki wewenang menghapus kelas perkuliahan.");
+  }
+
+  const updated = list.filter(c => c.id !== classId);
+  await setLocal(STORAGE_KEYS.CLASSES, updated);
+
+  if (isRealFirebaseConfigured() && db) {
+    try {
+      const { deleteDoc } = await import("firebase/firestore");
+      await deleteDoc(doc(db, "classes", classId));
+    } catch (e) {
+      console.warn("Firestore deleteClass sync error:", e);
+    }
+  }
+
+  await logAudit(user, 'DELETE_CLASS', `Menghapus kelas perkuliahan: ${target.namaMk} (${target.namaKelas})`);
+  return true;
+}
+
 export async function enrollStudent(classId, mhsId, user) {
   const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
   const classItem = list.find(c => c.id === classId);

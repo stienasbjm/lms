@@ -5,7 +5,8 @@
 import { 
   signInWithEmailAndPassword, 
   signOut as firebaseSignOut, 
-  onAuthStateChanged 
+  onAuthStateChanged,
+  sendPasswordResetEmail 
 } from "firebase/auth";
 import { doc, getDoc, setDoc, collection, getDocs } from "firebase/firestore";
 import { auth, db, isRealFirebaseConfigured } from "./config.js";
@@ -214,3 +215,99 @@ export function getCurrentUser() {
   }
   return null;
 }
+
+/**
+ * Permintaan Reset Kata Sandi - Kirim tautan ke email resmi yang terdaftar
+ * Mendukung pencarian berdasarkan Email, NIM, atau Username
+ */
+export async function requestPasswordReset(identifier) {
+  const rawId = (identifier || '').trim();
+  const trimmed = rawId.toLowerCase();
+
+  if (!rawId) {
+    throw new Error("Silakan masukkan alamat email, NIM, atau username akun Anda.");
+  }
+
+  // 1. Kumpulkan seluruh pengguna untuk menemukan email terdaftar
+  let combinedUsers = [...INITIAL_USERS];
+  try {
+    const stored = localStorage.getItem('STIE_LMS_USERS');
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) {
+        parsed.forEach(storedU => {
+          const idx = combinedUsers.findIndex(u => 
+            u.uid === storedU.uid || 
+            (u.email && storedU.email && u.email.toLowerCase() === storedU.email.toLowerCase())
+          );
+          if (idx >= 0) combinedUsers[idx] = { ...combinedUsers[idx], ...storedU };
+          else combinedUsers.push(storedU);
+        });
+      }
+    }
+  } catch (e) {
+    console.warn("Gagal membaca pengguna lokal:", e);
+  }
+
+  // 2. Cari pengguna berdasarkan Email, Alias, Username, NIM, atau NIDN
+  const foundUser = combinedUsers.find(u => 
+    (u.email && u.email.toLowerCase() === trimmed) ||
+    (u.aliasEmail && u.aliasEmail.toLowerCase() === trimmed) ||
+    (u.username && u.username.toLowerCase() === trimmed) ||
+    (u.nim && String(u.nim).trim().toLowerCase() === trimmed) ||
+    (u.nidn && String(u.nidn).trim().toLowerCase() === trimmed)
+  );
+
+  let targetEmail = null;
+  if (foundUser && foundUser.email) {
+    targetEmail = foundUser.email.trim();
+  } else if (trimmed.includes('@')) {
+    targetEmail = trimmed;
+  }
+
+  if (!targetEmail) {
+    throw new Error(`Akun dengan identitas '${identifier}' tidak ditemukan dalam basis data LMS STIE Nasional.`);
+  }
+
+  if (foundUser && foundUser.isActive === false) {
+    throw new Error("Akun ini dalam status non-aktif / dibekukan. Silakan hubungi Bagian Administrasi Akademik (BAA).");
+  }
+
+  let sentViaFirebase = false;
+
+  // 3. Kirim reset password via Firebase Auth jika terkonfigurasi
+  if (isRealFirebaseConfigured() && auth) {
+    try {
+      await sendPasswordResetEmail(auth, targetEmail);
+      sentViaFirebase = true;
+    } catch (fbErr) {
+      console.warn("Firebase sendPasswordResetEmail notice:", fbErr.code || fbErr.message);
+    }
+  }
+
+  // 4. Catat permintaan ke riwayat permintaan reset di localStorage agar Admin/BAA dapat memantau jika perlu
+  try {
+    const resetRequestsKey = 'STIE_LMS_RESET_REQUESTS';
+    const rawReqs = localStorage.getItem(resetRequestsKey);
+    const requests = rawReqs ? JSON.parse(rawReqs) : [];
+    requests.unshift({
+      id: `reset-${Date.now()}`,
+      email: targetEmail,
+      name: foundUser?.name || 'Pengguna LMS',
+      identifierProvided: identifier,
+      sentViaFirebase,
+      timestamp: new Date().toISOString()
+    });
+    localStorage.setItem(resetRequestsKey, JSON.stringify(requests.slice(0, 50)));
+  } catch (e) {
+    console.warn("Save reset request error:", e);
+  }
+
+  return {
+    success: true,
+    email: targetEmail,
+    name: foundUser?.name || targetEmail,
+    sentViaFirebase
+  };
+}
+

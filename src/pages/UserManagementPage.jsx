@@ -66,7 +66,7 @@ export default function UserManagementPage() {
     role: 'MAHASISWA',
     nim: '',
     nidn: '',
-    angkatan: 2024,
+    angkatan: 2026,
     prodiId: 'prodi-s1-manajemen',
     phone: '',
     isActive: true
@@ -79,7 +79,7 @@ export default function UserManagementPage() {
     role: 'MAHASISWA',
     nim: '',
     nidn: '',
-    angkatan: 2024,
+    angkatan: 2026,
     prodiId: '',
     phone: '',
     isActive: true,
@@ -148,7 +148,7 @@ export default function UserManagementPage() {
   // ==========================================
   const handleOpenCreate = () => {
     const defaultRole = 'MAHASISWA';
-    const defaultAngkatan = 2024;
+    const defaultAngkatan = 2026;
     const defaultProdi = prodis[0]?.id || 'prodi-s1-manajemen';
     setCreateForm({
       name: '',
@@ -196,7 +196,7 @@ export default function UserManagementPage() {
     setShowPasswordText(false);
 
     const calculatedAngkatan = target.angkatan || 
-      (target.nim ? calculateAcademicStanding(target.nim).angkatan : 2024);
+      (target.nim ? calculateAcademicStanding(target.nim).angkatan : 2026);
 
     setManageForm({
       name: target.name || '',
@@ -641,7 +641,7 @@ export default function UserManagementPage() {
                       >
                         {ANGKATAN_OPTIONS.map(opt => (
                           <option key={opt.tahun} value={opt.tahun}>
-                            Angkatan {opt.tahun} (Semester {opt.semester})
+                            {opt.label}
                           </option>
                         ))}
                       </select>
@@ -889,7 +889,7 @@ export default function UserManagementPage() {
                       >
                         {ANGKATAN_OPTIONS.map(opt => (
                           <option key={opt.tahun} value={opt.tahun}>
-                            Angkatan {opt.tahun} (Semester {opt.semester})
+                            {opt.label}
                           </option>
                         ))}
                       </select>

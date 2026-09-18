@@ -3,13 +3,15 @@ import { useAuth } from '../context/AuthContext';
 import { 
   getClasses, 
   createClass, 
+  updateClass,
+  deleteClass,
   getMataKuliah, 
   getTahunAkademik, 
   getUsers,
   enrollStudent,
   subscribeToDataSync 
 } from '../firebase/firestoreService';
-import { showSuccessToast, showErrorAlert } from '../utils/alert';
+import { showSuccessToast, showErrorAlert, showConfirmDialog } from '../utils/alert';
 import { 
   BookOpen, 
   Plus, 
@@ -25,7 +27,10 @@ import {
   CheckCircle2,
   GraduationCap,
   Lock,
-  AlertCircle
+  AlertCircle,
+  Edit3,
+  Trash2,
+  Settings
 } from 'lucide-react';
 
 export default function ClassListPage({ onSelectClass }) {
@@ -45,6 +50,21 @@ export default function ClassListPage({ onSelectClass }) {
   // Modal Buka Kelas Baru (Khusus Admin BAA)
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [formData, setFormData] = useState({
+    mataKuliahId: '',
+    tahunAkademikId: '',
+    dosenId: '',
+    namaKelas: 'A',
+    ruang: 'Ruang Teori 101',
+    hari: 'Senin',
+    jam: '08:00 - 10:30 WITA',
+    kuota: 40,
+    status: 'OPEN'
+  });
+
+  // Modal Edit / Ubah Kelas (Khusus Admin & BAA)
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [selectedClassToEdit, setSelectedClassToEdit] = useState(null);
+  const [editFormData, setEditFormData] = useState({
     mataKuliahId: '',
     tahunAkademikId: '',
     dosenId: '',
@@ -132,6 +152,84 @@ export default function ClassListPage({ onSelectClass }) {
       showSuccessToast(`Kelas ${selectedMk.namaMk} (${formData.namaKelas}) berhasil dibuka!`);
     } catch (err) {
       showErrorAlert("Gagal Membuka Kelas", err.message);
+    }
+  };
+
+  // Handler Buka Modal Edit Kelas
+  const handleOpenEditClass = (cls, e) => {
+    e?.stopPropagation?.();
+    setSelectedClassToEdit(cls);
+    setEditFormData({
+      mataKuliahId: cls.mataKuliahId || '',
+      tahunAkademikId: cls.tahunAkademikId || '',
+      dosenId: cls.dosenId || '',
+      namaKelas: cls.namaKelas || 'A',
+      ruang: cls.ruang || 'Ruang Teori 101',
+      hari: cls.hari || 'Senin',
+      jam: cls.jam || '08:00 - 10:30 WITA',
+      kuota: cls.kuota || 40,
+      status: cls.status || 'OPEN'
+    });
+    setShowEditModal(true);
+  };
+
+  // Handler Submit Edit Kelas
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    if (!isAdmin) {
+      showErrorAlert("Akses Ditolak", "Hanya Admin dan BAA yang memiliki wewenang mengubah data kelas.");
+      return;
+    }
+
+    const selectedMk = mks.find(m => m.id === editFormData.mataKuliahId);
+    const selectedTa = tas.find(t => t.id === editFormData.tahunAkademikId);
+    const selectedDosen = dosenList.find(d => d.uid === editFormData.dosenId);
+
+    try {
+      await updateClass(selectedClassToEdit.id, {
+        ...editFormData,
+        mataKuliahId: selectedMk?.id || selectedClassToEdit.mataKuliahId,
+        namaMk: selectedMk?.namaMk || selectedClassToEdit.namaMk,
+        kodeMk: selectedMk?.kodeMk || selectedClassToEdit.kodeMk,
+        sks: selectedMk?.sks || selectedClassToEdit.sks,
+        tahunAkademikId: selectedTa?.id || selectedClassToEdit.tahunAkademikId,
+        namaTa: selectedTa?.namaTa || selectedClassToEdit.namaTa,
+        dosenId: selectedDosen?.uid || selectedClassToEdit.dosenId,
+        namaDosen: selectedDosen?.name || selectedClassToEdit.namaDosen
+      }, user);
+
+      setShowEditModal(false);
+      setSelectedClassToEdit(null);
+      await loadData();
+      showSuccessToast(`Kelas ${selectedMk?.namaMk || selectedClassToEdit.namaMk} (${editFormData.namaKelas}) berhasil diperbarui!`);
+    } catch (err) {
+      showErrorAlert("Gagal Mengubah Kelas", err.message);
+    }
+  };
+
+  // Handler Hapus Kelas dengan Konfirmasi Interaktif
+  const handleDeleteClass = async (cls, e) => {
+    e?.stopPropagation?.();
+    if (!isAdmin) {
+      showErrorAlert("Akses Ditolak", "Hanya Admin dan BAA yang memiliki wewenang menghapus kelas.");
+      return;
+    }
+
+    const confirmed = await showConfirmDialog({
+      title: 'Hapus Kelas Perkuliahan?',
+      text: `Apakah Anda yakin ingin menghapus kelas "${cls.namaMk} (Kelas ${cls.namaKelas})"? Seluruh data modul pertemuan, presensi, dan nilai di kelas ini akan dihapus secara permanen.`,
+      confirmButtonText: 'Ya, Hapus Kelas',
+      confirmButtonColor: '#dc2626'
+    });
+
+    if (confirmed) {
+      try {
+        await deleteClass(cls.id, user);
+        showSuccessToast(`Kelas ${cls.namaMk} (${cls.namaKelas}) berhasil dihapus.`);
+        await loadData();
+      } catch (err) {
+        showErrorAlert("Gagal Menghapus Kelas", err.message);
+      }
     }
   };
 
@@ -414,18 +512,42 @@ export default function ClassListPage({ onSelectClass }) {
                         </span>
                       )}
                     </div>
-                    {isClassSemesterActive ? (
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${
-                        cls.status === 'OPEN' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-600'
-                      }`}>
-                        {cls.status || 'OPEN'}
-                      </span>
-                    ) : (
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 bg-rose-50 text-rose-700 border-rose-200 flex items-center gap-1">
-                        <Lock className="w-2.5 h-2.5 text-rose-600" />
-                        DITUTUP BAA
-                      </span>
-                    )}
+                    <div className="flex items-center gap-1.5">
+                      {isClassSemesterActive ? (
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${
+                          cls.status === 'OPEN' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-600'
+                        }`}>
+                          {cls.status || 'OPEN'}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 bg-rose-50 text-rose-700 border-rose-200 flex items-center gap-1">
+                          <Lock className="w-2.5 h-2.5 text-rose-600" />
+                          DITUTUP BAA
+                        </span>
+                      )}
+
+                      {/* Tombol Aksi Edit & Hapus untuk Admin dan BAA */}
+                      {isAdmin && (
+                        <div className="flex items-center gap-1 ml-1">
+                          <button
+                            type="button"
+                            onClick={(e) => handleOpenEditClass(cls, e)}
+                            title="Edit / Ubah Data Kelas (Admin & BAA)"
+                            className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition-colors shadow-sm"
+                          >
+                            <Edit3 className="w-3 h-3" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteClass(cls, e)}
+                            title="Hapus Kelas (Admin & BAA)"
+                            className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-colors shadow-sm"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <h3 className="font-bold text-base text-slate-900 line-clamp-1">
@@ -642,6 +764,159 @@ export default function ClassListPage({ onSelectClass }) {
                   className="px-4 py-1.5 bg-brand-800 text-white rounded-lg font-bold hover:bg-brand-900"
                 >
                   Buka & Buat 16 Pertemuan
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Edit / Ubah Kelas (Khusus Admin & BAA) */}
+      {showEditModal && isAdmin && selectedClassToEdit && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6 border border-slate-200 animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center gap-2 mb-1">
+              <div className="p-2 rounded-lg bg-amber-50 text-amber-700">
+                <Edit3 className="w-5 h-5 text-amber-800" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-slate-900">Edit Data Kelas Perkuliahan</h3>
+                <p className="text-xs text-slate-500">
+                  Kewenangan Admin & Bagian Administrasi Akademik (BAA) STIE Nasional
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleEditSubmit} className="space-y-3 text-xs mt-4">
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">Mata Kuliah</label>
+                <select
+                  value={editFormData.mataKuliahId}
+                  onChange={e => setEditFormData({...editFormData, mataKuliahId: e.target.value})}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 bg-white"
+                >
+                  {mks.map(m => (
+                    <option key={m.id} value={m.id}>
+                      {m.kodeMk} - {m.namaMk} ({m.sks} SKS)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">Semester / Tahun Akademik</label>
+                  <select
+                    value={editFormData.tahunAkademikId}
+                    onChange={e => setEditFormData({...editFormData, tahunAkademikId: e.target.value})}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 bg-white"
+                  >
+                    {tas.map(t => (
+                      <option key={t.id} value={t.id}>
+                        {t.namaTa} {t.isActive ? '(Aktif BAA)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">Nama / Golongan Kelas</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="A, B, Reguler Pagi, dll."
+                    value={editFormData.namaKelas}
+                    onChange={e => setEditFormData({...editFormData, namaKelas: e.target.value})}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 font-bold"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">Dosen Pengampu</label>
+                <select
+                  value={editFormData.dosenId}
+                  onChange={e => setEditFormData({...editFormData, dosenId: e.target.value})}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 bg-white"
+                >
+                  {dosenList.map(d => (
+                    <option key={d.uid} value={d.uid}>
+                      {d.name} {d.nidn ? `(NIDN: ${d.nidn})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">Hari</label>
+                  <select
+                    value={editFormData.hari}
+                    onChange={e => setEditFormData({...editFormData, hari: e.target.value})}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 bg-white"
+                  >
+                    {['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'].map(h => (
+                      <option key={h} value={h}>{h}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">Jam Perkuliahan</label>
+                  <input
+                    type="text"
+                    value={editFormData.jam}
+                    onChange={e => setEditFormData({...editFormData, jam: e.target.value})}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">Kuota Kelas</label>
+                  <input
+                    type="number"
+                    min="5"
+                    max="100"
+                    value={editFormData.kuota}
+                    onChange={e => setEditFormData({...editFormData, kuota: Number(e.target.value)})}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">Ruang Kelas / Lab</label>
+                  <input
+                    type="text"
+                    value={editFormData.ruang}
+                    onChange={e => setEditFormData({...editFormData, ruang: e.target.value})}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">Status Pendaftaran</label>
+                  <select
+                    value={editFormData.status}
+                    onChange={e => setEditFormData({...editFormData, status: e.target.value})}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 bg-white font-bold"
+                  >
+                    <option value="OPEN">OPEN (Pendaftaran Dibuka)</option>
+                    <option value="CLOSED">CLOSED (Pendaftaran Ditutup)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => { setShowEditModal(false); setSelectedClassToEdit(null); }}
+                  className="px-3.5 py-1.5 text-slate-600 hover:bg-slate-100 rounded-lg font-medium"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-amber-700 hover:bg-amber-800 text-white rounded-lg font-bold shadow"
+                >
+                  Simpan Perubahan
                 </button>
               </div>
             </form>

@@ -76,11 +76,12 @@ export const INITIAL_USERS = [
     name: 'Ahmad Fadillah',
     role: 'MAHASISWA',
     nim: '221011001',
+    angkatan: 2022,
     username: 'mahasiswa',
     password: 'mhs123',
     phone: '082155667788',
     prodiId: 'prodi-s1-manajemen',
-    semester: 5,
+    semester: 9,
     isActive: true,
     avatarUrl: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150&auto=format&fit=crop&q=80'
   },
@@ -90,11 +91,12 @@ export const INITIAL_USERS = [
     name: 'Nurul Hidayah',
     role: 'MAHASISWA',
     nim: '221011002',
+    angkatan: 2022,
     username: '221011002',
     password: 'mhs123',
     phone: '082155998877',
     prodiId: 'prodi-s1-manajemen',
-    semester: 5,
+    semester: 9,
     isActive: true,
     avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80'
   },
@@ -104,13 +106,29 @@ export const INITIAL_USERS = [
     name: 'Muhammad Rifky',
     role: 'MAHASISWA',
     nim: '221011003',
+    angkatan: 2022,
     username: '221011003',
     password: 'mhs123',
     phone: '082155112233',
     prodiId: 'prodi-s1-akuntansi',
-    semester: 5,
+    semester: 9,
     isActive: true,
     avatarUrl: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=150&auto=format&fit=crop&q=80'
+  },
+  {
+    uid: 'user-mhs-4',
+    email: '261011001@lms.stienas.ac.id',
+    name: 'Putri Maharani',
+    role: 'MAHASISWA',
+    nim: '261011001',
+    angkatan: 2026,
+    username: '261011001',
+    password: 'mhs123',
+    phone: '082155443322',
+    prodiId: 'prodi-s1-manajemen',
+    semester: 1,
+    isActive: true,
+    avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
   }
 ];
 

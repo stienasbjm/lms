@@ -39,7 +39,8 @@ import {
   Share2,
   Check,
   Trash2,
-  Lock
+  Lock,
+  Edit3
 } from 'lucide-react';
 import { showSuccessAlert, showErrorAlert, showSuccessToast, showErrorToast, showConfirmDialog } from '../utils/alert';
 
@@ -57,8 +58,16 @@ export default function ClassDetailPage({ classId, onBack }) {
   const [showAttendanceModal, setShowAttendanceModal] = useState(false);
   const [showTaskSubmitModal, setShowTaskSubmitModal] = useState(false);
   const [showGradingModal, setShowGradingModal] = useState(null);
+  const [showEditMeetingModal, setShowEditMeetingModal] = useState(false);
 
   // Form states
+  const [editMeetingForm, setEditMeetingForm] = useState({
+    judul: '',
+    deskripsi: '',
+    subCpmk: '',
+    indikatorObe: '',
+    tanggal: ''
+  });
   const [materialForm, setMaterialForm] = useState({ 
     judul: '', 
     linkUrl: '', 
@@ -153,6 +162,43 @@ export default function ClassDetailPage({ classId, onBack }) {
   const enrolledStudentsList = allUsers.filter(u => (classData.enrolledStudents || []).includes(u.uid));
   const isLecturerOfThisClass = isDosen && classData.dosenId === user.uid;
   const canManageClass = isAdmin || isLecturerOfThisClass;
+
+  // Buka modal edit judul & rincian pertemuan (Dosen)
+  const handleOpenEditMeeting = () => {
+    setEditMeetingForm({
+      judul: activeMeeting.judul || `Pertemuan ${activeMeeting.pertemuanKe}: Pokok Bahasan Teori & Konsep ${activeMeeting.pertemuanKe}`,
+      deskripsi: activeMeeting.deskripsi || '',
+      subCpmk: activeMeeting.subCpmk || '',
+      indikatorObe: activeMeeting.indikatorObe || '',
+      tanggal: activeMeeting.tanggal || ''
+    });
+    setShowEditMeetingModal(true);
+  };
+
+  // Simpan perubahan judul & rincian pertemuan
+  const handleSaveEditMeeting = async (e) => {
+    e.preventDefault();
+    if (!editMeetingForm.judul.trim()) {
+      showErrorAlert("Judul Diperlukan", "Judul pertemuan tidak boleh kosong.");
+      return;
+    }
+
+    try {
+      await updateMeeting(classId, activeMeeting.pertemuanKe, {
+        judul: editMeetingForm.judul.trim(),
+        deskripsi: editMeetingForm.deskripsi.trim(),
+        subCpmk: editMeetingForm.subCpmk.trim(),
+        indikatorObe: editMeetingForm.indikatorObe.trim(),
+        tanggal: editMeetingForm.tanggal
+      }, user);
+
+      setShowEditMeetingModal(false);
+      await loadClass();
+      showSuccessToast(`Judul & materi Pertemuan ke-${activeMeeting.pertemuanKe} berhasil disimpan!`);
+    } catch (err) {
+      showErrorAlert("Gagal Menyimpan Pertemuan", err.message);
+    }
+  };
 
   // Buka modal atur media
   const handleOpenMediaModal = () => {
@@ -455,14 +501,25 @@ export default function ClassDetailPage({ classId, onBack }) {
                 </div>
               </div>
 
-              {canManageClass && (
-                <button
-                  onClick={handleOpenAttendanceModal}
-                  className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow transition-colors shrink-0"
-                >
-                  <CheckCircle className="w-4 h-4" />
-                  Presensi Mahasiswa
-                </button>
+              {canManageClass && isTaActive && (
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleOpenEditMeeting}
+                    className="px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors"
+                  >
+                    <Edit3 className="w-3.5 h-3.5 text-amber-700" />
+                    <span>Edit Judul Pertemuan</span>
+                  </button>
+
+                  <button
+                    onClick={handleOpenAttendanceModal}
+                    className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow transition-colors"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    Presensi Mahasiswa
+                  </button>
+                </div>
               )}
             </div>
 
@@ -1239,6 +1296,111 @@ export default function ClassDetailPage({ classId, onBack }) {
                   className="px-4 py-1.5 bg-brand-800 text-white rounded-lg font-bold hover:bg-brand-900"
                 >
                   Simpan Nilai
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 6: EDIT JUDUL & POKOK BAHASAN PERTEMUAN OLEH DOSEN */}
+      {showEditMeetingModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6 border border-slate-200 animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center gap-2 mb-1">
+              <div className="p-2 rounded-lg bg-amber-50 text-amber-700">
+                <Edit3 className="w-5 h-5 text-amber-800" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-slate-900">
+                  Edit Judul & Pokok Bahasan Pertemuan {activeMeeting.pertemuanKe}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Kustomisasi judul topik perkuliahan dan capaian pembelajaran OBE
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveEditMeeting} className="space-y-4 text-xs mt-4">
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">
+                  Judul Pertemuan *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder={`Contoh: Pertemuan ${activeMeeting.pertemuanKe}: Pokok Bahasan Teori & Konsep ${activeMeeting.pertemuanKe}`}
+                  value={editMeetingForm.judul}
+                  onChange={e => setEditMeetingForm({ ...editMeetingForm, judul: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 font-bold text-slate-900 text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">
+                  Deskripsi Modul / Pokok Bahasan
+                </label>
+                <textarea
+                  rows="3"
+                  placeholder="Rangkuman pokok bahasan, instruksi modul RPS, dan studi kasus perkuliahan..."
+                  value={editMeetingForm.deskripsi}
+                  onChange={e => setEditMeetingForm({ ...editMeetingForm, deskripsi: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 text-xs leading-relaxed"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">
+                  Capaian Pembelajaran (Sub-CPMK) Kurikulum OBE
+                </label>
+                <input
+                  type="text"
+                  placeholder="Sub-CPMK: Mampu menganalisis konsep teoritis..."
+                  value={editMeetingForm.subCpmk}
+                  onChange={e => setEditMeetingForm({ ...editMeetingForm, subCpmk: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 text-xs"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">
+                    Indikator Asesmen Otentik
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ketepatan analisis, rubrik 0-100"
+                    value={editMeetingForm.indikatorObe}
+                    onChange={e => setEditMeetingForm({ ...editMeetingForm, indikatorObe: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">
+                    Tanggal Pelaksanaan
+                  </label>
+                  <input
+                    type="date"
+                    value={editMeetingForm.tanggal}
+                    onChange={e => setEditMeetingForm({ ...editMeetingForm, tanggal: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setShowEditMeetingModal(false)}
+                  className="px-3.5 py-1.5 text-slate-600 hover:bg-slate-100 rounded-lg font-medium"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-brand-800 hover:bg-brand-900 text-white rounded-lg font-bold shadow transition-colors"
+                >
+                  Simpan Judul Pertemuan
                 </button>
               </div>
             </form>
