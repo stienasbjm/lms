@@ -12,13 +12,14 @@ import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
 // Default configuration resmi Firebase LMS STIE Nasional Banjarmasin
+const env = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {};
 const DEFAULT_FIREBASE_CONFIG = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyDITlobzgm52tNwHUa7j5Z070DY4vJOJBw",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "lms-stienas.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "lms-stienas",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "lms-stienas.firebasestorage.app",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "1039609038510",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:1039609038510:web:18536257413fe47b448f3f"
+  apiKey: env.VITE_FIREBASE_API_KEY || "AIzaSyDITlobzgm52tNwHUa7j5Z070DY4vJOJBw",
+  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || "lms-stienas.firebaseapp.com",
+  projectId: env.VITE_FIREBASE_PROJECT_ID || "lms-stienas",
+  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || "lms-stienas.firebasestorage.app",
+  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID || "1039609038510",
+  appId: env.VITE_FIREBASE_APP_ID || "1:1039609038510:web:18536257413fe47b448f3f"
 };
 
 // Ambil konfigurasi dari localStorage jika ada, atau fallback ke DEFAULT resmi

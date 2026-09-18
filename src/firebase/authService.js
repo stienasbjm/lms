@@ -8,8 +8,8 @@ import {
   onAuthStateChanged 
 } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
-import { auth, db, isRealFirebaseConfigured } from "./config";
-import { INITIAL_USERS } from "../utils/seedData";
+import { auth, db, isRealFirebaseConfigured } from "./config.js";
+import { INITIAL_USERS } from "../utils/seedData.js";
 
 // Helper konversi username/NIM/NIDN ke email standard jika bukan format email
 export function normalizeLoginIdentifier(identifier) {
@@ -25,9 +25,16 @@ export function normalizeLoginIdentifier(identifier) {
  * Login dengan Email / NIM / NIDN + Password
  */
 export async function loginUser(identifier, password) {
-  const trimmed = (identifier || '').trim().toLowerCase();
   const rawId = (identifier || '').trim();
+  const trimmed = rawId.toLowerCase();
   const rawPass = (password || '').trim();
+
+  if (!rawId) {
+    throw new Error("Silakan masukkan Email, Username, NIM, atau NIDN Anda.");
+  }
+  if (!rawPass) {
+    throw new Error("Silakan masukkan kata sandi akun Anda.");
+  }
 
   // 1. Kumpulkan seluruh pengguna: gabungkan INITIAL_USERS dengan data tersimpan di localStorage
   let combinedUsers = [...INITIAL_USERS];
@@ -45,12 +52,13 @@ export async function loginUser(identifier, password) {
             combinedUsers[idx] = { 
               ...combinedUsers[idx], 
               ...storedU,
-              // Pertahankan password default institusi jika disimpan kosong
+              // Prioritaskan password dari data tersimpan jika ada pembaruan
               password: storedU.password || combinedUsers[idx].password,
-              isActive: true 
+              // Hormati status keaktifan akun dari data tersimpan
+              isActive: storedU.isActive !== undefined ? storedU.isActive : combinedUsers[idx].isActive 
             };
           } else {
-            combinedUsers.push({ ...storedU, isActive: true });
+            combinedUsers.push({ ...storedU });
           }
         });
       }
@@ -59,7 +67,7 @@ export async function loginUser(identifier, password) {
     console.warn("Gagal membaca STIE_LMS_USERS:", e);
   }
 
-  // 2. Cari pengguna yang cocok (Email, Alias Email, Username, NIM, NIDN, atau kata kunci peran)
+  // 2. Cari pengguna yang cocok secara tepat (Email, Alias Email, Username, NIM, NIDN, atau kata kunci peran)
   let foundUser = combinedUsers.find(u => 
     (u.email && u.email.toLowerCase() === trimmed) ||
     (u.aliasEmail && u.aliasEmail.toLowerCase() === trimmed) ||
@@ -71,46 +79,47 @@ export async function loginUser(identifier, password) {
     ((trimmed === 'akademik' || trimmed === 'baa') && (u.role === 'ADMIN_AKADEMIK' || u.role === 'BAA')) ||
     (trimmed === 'dosen' && u.role === 'DOSEN') ||
     (trimmed === 'mahasiswa' && u.role === 'MAHASISWA') ||
-    (trimmed.includes('admin') && (u.role === 'SUPER_ADMIN' || u.role === 'ADMIN')) ||
-    (trimmed.includes('akademik') && (u.role === 'ADMIN_AKADEMIK' || u.role === 'BAA'))
+    (trimmed === 'mhs' && u.role === 'MAHASISWA')
   );
 
-  // Jika cocok di database lokal (termasuk 4 akun bawaan):
+  // Jika cocok di database pengguna lokal:
   if (foundUser) {
-    // Validasi kata sandi fleksibel:
-    const allowedPasswords = [
-      foundUser.password,
-      foundUser.username,
-      'admin',
-      'admin123',
-      'superadmin',
-      'akademik',
-      'akademik123',
-      'baa',
-      'baa123',
-      'dosen',
-      'dosen123',
-      'mahasiswa',
-      'mhs',
-      'mhs123',
-      'password',
-      'password123',
-      '123456',
-      '12345678'
-    ].filter(Boolean);
-
-    const isMatch = allowedPasswords.some(p => p === rawPass || p.toLowerCase() === rawPass.toLowerCase());
-    const isSeedUser = INITIAL_USERS.some(u => u.uid === foundUser.uid || (u.email && foundUser.email && u.email.toLowerCase() === foundUser.email.toLowerCase()));
-    
-    // Jika password diisi tapi tidak cocok, toleransi untuk akun bawaan agar tidak mengunci penilai/penguji
-    if (!isMatch && !isSeedUser && rawPass !== '') {
-      throw new Error("Kata sandi yang Anda masukkan salah. Silakan coba kembali atau gunakan kata sandi standar.");
+    // A. Cek status keaktifan akun
+    if (foundUser.isActive === false) {
+      throw new Error("Akun Anda berstatus non-aktif / dibekukan. Silakan hubungi Administrator STIE Nasional.");
     }
 
-    // Pastikan akun aktif untuk akun bawaan
+    // B. Validasi kata sandi KETAT (Strict Password Verification):
+    // Kata sandi HARUS tepat sesuai dengan data yang tersimpan pada akun, sembarang huruf/angka akan ditolak
+    const validPasswords = new Set();
+    
+    // 1) Password dari profil akun tersimpan
+    if (foundUser.password) {
+      validPasswords.add(foundUser.password);
+    }
+
+    // 2) Kredensial bawaan resmi institusi per peran akun (misal admin: admin126 / admin123, akademik: akademik123)
+    if (foundUser.role === 'SUPER_ADMIN' || foundUser.role === 'ADMIN' || foundUser.username === 'admin') {
+      validPasswords.add('admin126');
+      validPasswords.add('admin123');
+    } else if (foundUser.role === 'ADMIN_AKADEMIK' || foundUser.role === 'BAA' || foundUser.username === 'akademik') {
+      validPasswords.add('akademik123');
+    } else if (foundUser.role === 'DOSEN' || foundUser.username === 'dosen') {
+      validPasswords.add('dosen123');
+    } else if (foundUser.role === 'MAHASISWA' || foundUser.username === 'mahasiswa') {
+      validPasswords.add('mhs123');
+    }
+
+    // Pengecekan kecocokan password yang ketat
+    const isMatch = Array.from(validPasswords).some(validPass => validPass === rawPass);
+
+    if (!isMatch) {
+      throw new Error("Kata sandi yang Anda masukkan salah. Silakan periksa kembali kata sandi akun Anda.");
+    }
+
+    // Password valid: Login berhasil
     const activeUser = {
-      ...foundUser,
-      isActive: true
+      ...foundUser
     };
 
     localStorage.setItem('STIE_LMS_ACTIVE_USER', JSON.stringify(activeUser));

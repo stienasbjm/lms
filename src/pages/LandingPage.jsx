@@ -51,7 +51,7 @@ export default function LandingPage({ onGoToLogin }) {
       badgeColor: 'bg-purple-100 text-purple-800 border-purple-200',
       title: 'Administrator Sistem',
       email: 'admin@stienas.ac.id',
-      password: 'admin123',
+      password: 'admin126',
       description: 'Akses penuh tata kelola master akademik OBE, integrasi cloud database Firebase, impor data massal JSON, dan audit log.',
       features: ['Master Kurikulum OBE & CPL/CPMK', 'Konfigurasi Cloud Firebase BaaS', 'Audit Trail & Manajemen Pengguna']
     },
