@@ -45,15 +45,35 @@ export async function loginUser(identifier, password) {
     if (isRealFirebaseConfigured() && db) {
        try {
          const snap = await getDocs(collection(db, "users"));
-         if (!snap.empty) {
-           fbUsers = snap.docs.map(d => {
-             const data = d.data();
-             if (!data.uid && !data.id) data.id = d.id;
-             return data;
-           });
-           localStorage.setItem('STIE_LMS_USERS', JSON.stringify(fbUsers));
-           fbLoaded = true;
-         }
+          if (!snap.empty) {
+            fbUsers = snap.docs.map(d => {
+              const data = d.data();
+              if (!data.uid && !data.id) data.id = d.id;
+              return data;
+            });
+            const storedRaw = localStorage.getItem('STIE_LMS_USERS');
+            let mergedUsers = fbUsers;
+            if (storedRaw) {
+              try {
+                const localParsed = JSON.parse(storedRaw);
+                const map = new Map();
+                localParsed.forEach(u => {
+                  const id = u.uid || u.id || u.email;
+                  if (id) map.set(String(id), u);
+                });
+                fbUsers.forEach(u => {
+                  const id = u.uid || u.id || u.email;
+                  if (id) {
+                    const ex = map.get(String(id));
+                    map.set(String(id), { ...(ex || {}), ...u });
+                  }
+                });
+                mergedUsers = Array.from(map.values());
+              } catch(e) {}
+            }
+            localStorage.setItem('STIE_LMS_USERS', JSON.stringify(mergedUsers));
+            fbLoaded = true;
+          }
        } catch(e) { console.warn(e); }
     }
     

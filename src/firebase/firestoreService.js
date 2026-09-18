@@ -162,9 +162,6 @@ export async function getLocal(key, initial) {
   }
 
   if (Array.isArray(localItems) && localItems.length > 0) {
-    if (!fbLoaded && isRealFirebaseConfigured()) {
-       await setLocal(key, localItems);
-    }
     return localItems;
   }
   await setLocal(key, initial);
@@ -186,7 +183,8 @@ export async function setLocal(key, value) {
           value.forEach(item => {
             const id = item.uid || item.id;
             if (id) {
-              batch.set(doc(db, colName, String(id)), item, { merge: true });
+              const cleanItem = JSON.parse(JSON.stringify(item));
+              batch.set(doc(db, colName, String(id)), cleanItem, { merge: true });
               count++;
             }
           });
@@ -429,18 +427,19 @@ export async function createUser(userData, currentUser) {
   }
 
   const newUid = `user-${role.toLowerCase()}-${Date.now()}`;
+  const defaultPassword = role === 'DOSEN' ? 'dosen123' : 'stienas2026';
   const newUser = {
     uid: newUid,
     id: newUid,
     name: (userData.name || 'Pengguna Baru').trim(),
-    email: (userData.email || '').trim(),
-    username: (userData.username || userData.email.split('@')[0] || '').trim(),
-    password: userData.password ? userData.password.trim() : 'stienas2026',
+    email: targetEmail,
+    username: (userData.username || targetEmail.split('@')[0] || newUid).trim(),
+    password: userData.password ? userData.password.trim() : defaultPassword,
     role: role,
-    nim: role === 'MAHASISWA' ? (userData.nim ? String(userData.nim).replace(/\D/g, '') : '') : undefined,
-    nidn: role === 'DOSEN' ? (userData.nidn || '').trim() : undefined,
-    angkatan: userData.angkatan ? Number(userData.angkatan) : undefined,
-    prodiId: userData.prodiId || undefined,
+    nim: role === 'MAHASISWA' ? (userData.nim ? String(userData.nim).replace(/\D/g, '') : '') : '',
+    nidn: role === 'DOSEN' ? (userData.nidn ? String(userData.nidn).trim() : '') : '',
+    angkatan: role === 'MAHASISWA' ? (userData.angkatan ? Number(userData.angkatan) : 2026) : null,
+    prodiId: userData.prodiId || 'prodi-s1-manajemen',
     phone: (userData.phone || '').trim(),
     isActive: userData.isActive !== undefined ? userData.isActive : true,
     avatarUrl: userData.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.name || 'User')}&background=1e3a8a&color=fff`,
@@ -459,13 +458,15 @@ export async function createUser(userData, currentUser) {
   // Direct Firestore write attempt jika online
   if (isRealFirebaseConfigured() && db) {
     try {
-      await setDoc(doc(db, "users", newUid), newUser, { merge: true });
+      const cleanFbDoc = JSON.parse(JSON.stringify(newUser));
+      await setDoc(doc(db, "users", newUid), cleanFbDoc, { merge: true });
     } catch (e) {
       console.warn("Direct Firestore createUser setDoc warning (data tetap tersimpan di lokal):", e);
     }
   }
 
-  list.push(newUser);
+  // Sisipkan di posisi pertama agar langsung muncul di paling atas tabel
+  list.unshift(newUser);
   await setLocal(STORAGE_KEYS.USERS, list);
   await logAudit(
     currentUser, 

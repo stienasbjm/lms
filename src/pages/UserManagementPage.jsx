@@ -154,17 +154,17 @@ export default function UserManagementPage() {
   // ==========================================
   // HANDLERS: TAMBAH AKUN BARU
   // ==========================================
-  const handleOpenCreate = () => {
-    const defaultRole = roleFilter === 'DOSEN' ? 'DOSEN' : 'MAHASISWA';
+  const handleOpenCreate = (targetRole) => {
+    const selectedRole = targetRole || (roleFilter === 'DOSEN' ? 'DOSEN' : 'MAHASISWA');
     const defaultAngkatan = 2026;
     const defaultProdi = prodis[0]?.id || 'prodi-s1-manajemen';
     setCreateForm({
       name: '',
       email: '',
-      password: '',
-      role: defaultRole,
-      nim: defaultRole === 'MAHASISWA' ? generateSuggestedNim(defaultAngkatan, defaultProdi) : '',
-      nidn: defaultRole === 'DOSEN' ? ('110508' + Math.floor(1000 + Math.random() * 9000)) : '',
+      password: selectedRole === 'DOSEN' ? 'dosen123' : (selectedRole === 'MAHASISWA' ? 'mhs123' : 'stienas2026'),
+      role: selectedRole,
+      nim: selectedRole === 'MAHASISWA' ? generateSuggestedNim(defaultAngkatan, defaultProdi) : '',
+      nidn: selectedRole === 'DOSEN' ? ('110508' + Math.floor(1000 + Math.random() * 9000)) : '',
       angkatan: defaultAngkatan,
       prodiId: defaultProdi,
       phone: '',
@@ -180,16 +180,28 @@ export default function UserManagementPage() {
       return;
     }
 
+    // Pastikan jika role adalah DOSEN dan NIDN kosong, buatkan nomor NIDN otomatis
+    const submissionData = { ...createForm };
+    if (submissionData.role === 'DOSEN' && !submissionData.nidn?.trim()) {
+      submissionData.nidn = '110508' + Math.floor(1000 + Math.random() * 9000);
+    }
+
     try {
-      const created = await createUser(createForm, currentUser);
+      const created = await createUser(submissionData, currentUser);
       setShowCreateModal(false);
-      // Reset pencarian dan filter ke Semua Peran agar akun yang baru ditambahkan langsung terlihat
+      // Reset filter dan fokuskan tampilan sesuai akun yang baru saja dibuat
       setSearchTerm('');
-      setRoleFilter('ALL');
+      if (created?.role === 'DOSEN') {
+        setRoleFilter('DOSEN');
+      } else if (created?.role === 'MAHASISWA') {
+        setRoleFilter('MAHASISWA');
+      } else {
+        setRoleFilter('ALL');
+      }
       await loadData();
       showSuccessAlert(
         "Akun Berhasil Dibuat", 
-        `Akun ${created?.name || createForm.name} (${(created?.role || createForm.role).toUpperCase()}) berhasil ditambahkan ke dalam Master Akun LMS!`
+        `Akun ${created?.name || submissionData.name} (${(created?.role || submissionData.role).toUpperCase()}) berhasil ditambahkan ke dalam Master Akun LMS!`
       );
     } catch (err) {
       showErrorAlert("Gagal Menambahkan Akun", err.message);
@@ -323,14 +335,35 @@ export default function UserManagementPage() {
           </p>
         </div>
 
-        {/* Action Button: Tambah Akun */}
-        <button
-          onClick={handleOpenCreate}
-          className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand-800 hover:bg-brand-900 text-white rounded-xl text-xs font-bold shadow transition-all transform hover:-translate-y-0.5"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Tambah Akun {isSuperAdmin ? 'Pengguna' : 'Dosen / Mahasiswa'}</span>
-        </button>
+        {/* Action Buttons: Tambah Akun */}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => handleOpenCreate('DOSEN')}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-xs font-bold shadow transition-all transform hover:-translate-y-0.5"
+            title="Tambah akun Dosen pengampu baru"
+          >
+            <BookOpen className="w-4 h-4" />
+            <span>+ Tambah Akun Dosen</span>
+          </button>
+          <button
+            onClick={() => handleOpenCreate('MAHASISWA')}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow transition-all transform hover:-translate-y-0.5"
+            title="Tambah akun Mahasiswa baru"
+          >
+            <GraduationCap className="w-4 h-4" />
+            <span>+ Tambah Mahasiswa</span>
+          </button>
+          {isSuperAdmin && (
+            <button
+              onClick={() => handleOpenCreate('ADMIN_AKADEMIK')}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold shadow transition-all transform hover:-translate-y-0.5"
+              title="Tambah akun Staf BAA baru"
+            >
+              <Plus className="w-4 h-4" />
+              <span>+ Staf BAA</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Info Badge Otoritas BAA */}
@@ -574,29 +607,70 @@ export default function UserManagementPage() {
 
             <form onSubmit={handleCreateSubmit} className="space-y-3.5 text-xs">
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Peran Pengguna (Role) *</label>
-                <select
-                  value={createForm.role}
-                  onChange={e => {
-                    const newR = e.target.value;
-                    setCreateForm({
-                      ...createForm, 
-                      role: newR,
-                      nim: newR === 'MAHASISWA' ? generateSuggestedNim(createForm.angkatan, createForm.prodiId) : '',
-                      nidn: newR === 'DOSEN' ? '110508' + Math.floor(1000 + Math.random() * 9000) : ''
-                    });
-                  }}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-brand-500 font-bold bg-white"
-                >
-                  <option value="MAHASISWA">🎓 Mahasiswa (S1)</option>
-                  <option value="DOSEN">👨‍🏫 Dosen Pengampu</option>
-                  {isSuperAdmin && (
-                    <>
-                      <option value="ADMIN_AKADEMIK">🏛️ Bagian Akademik (BAA)</option>
-                      <option value="SUPER_ADMIN">👑 Super Admin</option>
-                    </>
-                  )}
-                </select>
+                <label className="block font-semibold text-slate-700 mb-1.5">Peran / Jenis Akun *</label>
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCreateForm(prev => ({
+                        ...prev,
+                        role: 'DOSEN',
+                        password: prev.password || 'dosen123',
+                        nidn: prev.nidn || ('110508' + Math.floor(1000 + Math.random() * 9000)),
+                        nim: ''
+                      }));
+                    }}
+                    className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs font-bold transition-all ${
+                      createForm.role === 'DOSEN'
+                        ? 'bg-blue-600 text-white border-blue-600 shadow'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    <BookOpen className="w-4 h-4" />
+                    <span>👨‍🏫 Akun Dosen</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCreateForm(prev => ({
+                        ...prev,
+                        role: 'MAHASISWA',
+                        password: prev.password || 'mhs123',
+                        nim: prev.nim || generateSuggestedNim(prev.angkatan, prev.prodiId),
+                        nidn: ''
+                      }));
+                    }}
+                    className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs font-bold transition-all ${
+                      createForm.role === 'MAHASISWA'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    <GraduationCap className="w-4 h-4" />
+                    <span>🎓 Akun Mahasiswa</span>
+                  </button>
+                </div>
+
+                {isSuperAdmin && (
+                  <select
+                    value={createForm.role}
+                    onChange={e => {
+                      const newR = e.target.value;
+                      setCreateForm({
+                        ...createForm, 
+                        role: newR,
+                        nim: newR === 'MAHASISWA' ? generateSuggestedNim(createForm.angkatan, createForm.prodiId) : '',
+                        nidn: newR === 'DOSEN' ? '110508' + Math.floor(1000 + Math.random() * 9000) : ''
+                      });
+                    }}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-brand-500 font-bold bg-white"
+                  >
+                    <option value="DOSEN">👨‍🏫 Dosen Pengampu</option>
+                    <option value="MAHASISWA">🎓 Mahasiswa (S1)</option>
+                    <option value="ADMIN_AKADEMIK">🏛️ Bagian Akademik (BAA)</option>
+                    <option value="SUPER_ADMIN">👑 Super Admin</option>
+                  </select>
+                )}
               </div>
 
               <div>
@@ -717,15 +791,24 @@ export default function UserManagementPage() {
                 <div className="p-4 bg-blue-50/70 border border-blue-200 rounded-2xl space-y-3">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block font-semibold text-slate-700 mb-1">NIDN Dosen *</label>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="block font-semibold text-slate-700">NIDN Dosen</label>
+                        <button
+                          type="button"
+                          onClick={() => setCreateForm(prev => ({ ...prev, nidn: '110508' + Math.floor(1000 + Math.random() * 9000) }))}
+                          className="text-[10px] text-blue-600 font-bold hover:underline"
+                        >
+                          + Acak NIDN
+                        </button>
+                      </div>
                       <input
                         type="text"
-                        required
                         placeholder="1105087501"
                         value={createForm.nidn}
-                        onChange={e => setCreateForm({ ...createForm, nidn: e.target.value })}
+                        onChange={e => setCreateForm({ ...createForm, nidn: e.target.value.replace(/\D/g, '') })}
                         className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono font-bold bg-white"
                       />
+                      <p className="text-[10px] text-slate-500 mt-1">Bila kosong, sistem otomatis membuatkan nomor NIDN unik.</p>
                     </div>
                     <div>
                       <label className="block font-semibold text-slate-700 mb-1">Program Studi Homebase</label>
