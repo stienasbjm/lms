@@ -498,9 +498,15 @@ export default function LoginPage({ onBackToLanding }) {
                 <input
                   type="text"
                   required
-                  placeholder="Contoh: 261011001"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  placeholder="Contoh: 261011001 (Hanya Angka)"
                   value={regForm.nim}
-                  onChange={e => setRegForm({ ...regForm, nim: e.target.value })}
+                  onKeyDown={e => {
+                    if (['Backspace', 'Delete', 'Tab', 'Escape', 'Enter', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key) || e.ctrlKey || e.metaKey) return;
+                    if (!/^[0-9]$/.test(e.key)) e.preventDefault();
+                  }}
+                  onChange={e => setRegForm({ ...regForm, nim: e.target.value.replace(/\D/g, '') })}
                   className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono font-bold text-slate-900 bg-white"
                 />
               </div>

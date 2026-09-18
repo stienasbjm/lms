@@ -393,7 +393,7 @@ export async function createUser(userData, currentUser) {
     username: userData.username || userData.email.split('@')[0],
     password: userData.password ? userData.password.trim() : 'stienas2026',
     role: userData.role,
-    nim: userData.role === 'MAHASISWA' ? (userData.nim || '') : undefined,
+    nim: userData.role === 'MAHASISWA' ? (userData.nim ? String(userData.nim).replace(/\D/g, '') : '') : undefined,
     nidn: userData.role === 'DOSEN' ? (userData.nidn || '') : undefined,
     angkatan: userData.angkatan || undefined,
     prodiId: userData.prodiId || undefined,
@@ -433,6 +433,9 @@ export async function updateUser(uid, userData, currentUser) {
   }
 
   const cleanUserData = { ...userData };
+  if (cleanUserData.nim !== undefined) {
+    cleanUserData.nim = String(cleanUserData.nim || '').replace(/\D/g, '');
+  }
   if (!cleanUserData.password || cleanUserData.password.trim() === '') {
     delete cleanUserData.password;
   } else {
@@ -539,7 +542,7 @@ export async function registerStudent(studentData) {
     username: emailClean.split('@')[0],
     password: (studentData.password && studentData.password.trim()) || 'mhs2026',
     role: 'MAHASISWA',
-    nim: studentData.nim || `261011${Math.floor(100 + Math.random() * 900)}`,
+    nim: studentData.nim ? String(studentData.nim).replace(/\D/g, '') : `261011${Math.floor(100 + Math.random() * 900)}`,
     angkatan: studentData.angkatan || 2026,
     prodiId: studentData.prodiId || 'prodi-s1-manajemen',
     phone: studentData.phone || '',
@@ -593,6 +596,7 @@ export async function batchImportData(type, items, user) {
     const current = await getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
     const updated = [...current, ...items.map(i => ({ 
       ...i, 
+      nim: type === 'MAHASISWA' && i.nim ? String(i.nim).replace(/\D/g, '') : i.nim,
       uid: i.uid || `user-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       role: type === 'DOSEN' ? 'DOSEN' : 'MAHASISWA',
       isActive: true 

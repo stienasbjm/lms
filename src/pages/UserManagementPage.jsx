@@ -661,8 +661,15 @@ export default function UserManagementPage() {
                       <input
                         type="text"
                         required
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        placeholder="Hanya angka (0-9)"
                         value={createForm.nim}
-                        onChange={e => setCreateForm({ ...createForm, nim: e.target.value })}
+                        onKeyDown={e => {
+                          if (['Backspace', 'Delete', 'Tab', 'Escape', 'Enter', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key) || e.ctrlKey || e.metaKey) return;
+                          if (!/^[0-9]$/.test(e.key)) e.preventDefault();
+                        }}
+                        onChange={e => setCreateForm({ ...createForm, nim: e.target.value.replace(/\D/g, '') })}
                         className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono font-bold bg-white"
                       />
                     </div>
@@ -909,8 +916,15 @@ export default function UserManagementPage() {
                       <input
                         type="text"
                         required
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        placeholder="Hanya angka (0-9)"
                         value={manageForm.nim}
-                        onChange={e => setManageForm({ ...manageForm, nim: e.target.value })}
+                        onKeyDown={e => {
+                          if (['Backspace', 'Delete', 'Tab', 'Escape', 'Enter', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key) || e.ctrlKey || e.metaKey) return;
+                          if (!/^[0-9]$/.test(e.key)) e.preventDefault();
+                        }}
+                        onChange={e => setManageForm({ ...manageForm, nim: e.target.value.replace(/\D/g, '') })}
                         className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono font-bold bg-white"
                       />
                     </div>

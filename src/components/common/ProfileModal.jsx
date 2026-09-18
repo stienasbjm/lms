@@ -158,9 +158,15 @@ export default function ProfileModal({ onClose }) {
                   <input 
                     type="text"
                     required
-                    placeholder="241011xxx"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder="261011xxx (Hanya Angka)"
                     value={form.nim}
-                    onChange={e => setForm({ ...form, nim: e.target.value })}
+                    onKeyDown={e => {
+                      if (['Backspace', 'Delete', 'Tab', 'Escape', 'Enter', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key) || e.ctrlKey || e.metaKey) return;
+                      if (!/^[0-9]$/.test(e.key)) e.preventDefault();
+                    }}
+                    onChange={e => setForm({ ...form, nim: e.target.value.replace(/\D/g, '') })}
                     className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg font-mono font-bold bg-white text-xs"
                   />
                 </div>
