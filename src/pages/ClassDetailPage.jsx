@@ -345,7 +345,7 @@ export default function ClassDetailPage({ classId, onBack }) {
         </div>
 
         {/* 16 Pertemuan Pills */}
-        <div className="grid grid-cols-4 sm:grid-cols-8 md:grid-cols-16 gap-1.5 text-center">
+        <div className="grid grid-cols-4 sm:grid-cols-8 xl:grid-cols-16 gap-1.5 sm:gap-2 text-center">
           {classData.meetings.map(m => {
             const isSelected = m.pertemuanKe === activeMeetingNumber;
             const isUTS = m.pertemuanKe === 8;
@@ -357,7 +357,7 @@ export default function ClassDetailPage({ classId, onBack }) {
                 onClick={() => setActiveMeetingNumber(m.pertemuanKe)}
                 className={`py-2 px-1 rounded-xl text-xs font-bold transition-all relative ${
                   isSelected 
-                    ? 'bg-brand-800 text-white shadow-md scale-105 z-10' 
+                    ? 'bg-brand-800 text-white shadow-md scale-105 z-10 ring-2 ring-brand-400' 
                     : isUTS 
                     ? 'bg-amber-100 text-amber-900 hover:bg-amber-200 border border-amber-300' 
                     : isUAS 
@@ -1017,7 +1017,7 @@ export default function ClassDetailPage({ classId, onBack }) {
                 {enrolledStudentsList.map(mhs => {
                   const currentStatus = attendanceRecords[mhs.uid]?.status || 'HADIR';
                   return (
-                    <div key={mhs.uid} className="py-2.5 flex items-center justify-between text-xs">
+                    <div key={mhs.uid} className="py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
                       <div>
                         <div className="font-bold text-slate-900">{mhs.name}</div>
                         <div className="text-[11px] text-slate-400 font-mono">NIM: {mhs.nim || mhs.username}</div>

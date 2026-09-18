@@ -243,7 +243,7 @@ export default function MasterDataPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-slate-200 gap-4 text-xs font-semibold">
+      <div className="flex border-b border-slate-200 gap-3 sm:gap-4 text-xs font-semibold overflow-x-auto whitespace-nowrap pb-0.5">
         <button
           onClick={() => setActiveTab('mk')}
           className={`pb-2.5 px-1 border-b-2 transition-colors flex items-center gap-1.5 ${

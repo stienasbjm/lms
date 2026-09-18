@@ -8,12 +8,13 @@ import {
   Database, 
   Settings, 
   Bell, 
-  Sparkles 
+  Sparkles,
+  Menu
 } from 'lucide-react';
 import FirebaseSettingsModal from './FirebaseSettingsModal';
 import ProfileModal from './ProfileModal';
 
-export default function Header() {
+export default function Header({ onToggleSidebar }) {
   const { user, logout, isFirebaseLive } = useAuth();
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -36,22 +37,32 @@ export default function Header() {
   return (
     <>
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             
-            {/* Logo & Kampus Branding */}
-            <div className="flex items-center space-x-3">
+            {/* Logo, Hamburger & Kampus Branding */}
+            <div className="flex items-center space-x-2 sm:space-x-3">
+              {/* Hamburger Button for Mobile / Tablet Drawer */}
+              <button
+                type="button"
+                onClick={onToggleSidebar}
+                className="lg:hidden p-2 -ml-1 rounded-xl text-slate-700 hover:text-brand-900 hover:bg-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500"
+                aria-label="Buka Menu Navigasi"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+
               <img 
                 src={`${import.meta.env.BASE_URL}logo-stienas.png`} 
                 alt="Logo STIE Nasional Banjarmasin" 
-                className="w-10 h-10 object-contain drop-shadow-sm hover:scale-105 transition-transform" 
+                className="w-8 h-8 sm:w-10 sm:h-10 object-contain drop-shadow-sm hover:scale-105 transition-transform" 
               />
               <div>
-                <h1 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-1.5">
+                <h1 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight flex items-center gap-1 sm:gap-1.5">
                   LMS STIE NASIONAL
                   <span className="hidden sm:inline-block text-[10px] bg-brand-50 text-brand-700 px-1.5 py-0.5 rounded border border-brand-200 uppercase font-mono">Banjarmasin</span>
                 </h1>
-                <p className="text-xs text-slate-500 font-medium hidden sm:block">Kurikulum Berbasis Luaran (Outcome-Based Education / OBE)</p>
+                <p className="text-[11px] sm:text-xs text-slate-500 font-medium hidden sm:block">Kurikulum Berbasis Luaran (Outcome-Based Education / OBE)</p>
               </div>
             </div>
 

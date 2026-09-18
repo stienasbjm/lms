@@ -60,8 +60,8 @@ export default function ProfileModal({ onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 border border-slate-200">
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+      <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl max-w-md w-full p-5 sm:p-6 border border-slate-200 max-h-[92vh] overflow-y-auto">
         
         {/* Header Modal */}
         <div className="flex justify-between items-center pb-3 border-b border-slate-100 mb-4">

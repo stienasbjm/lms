@@ -26,9 +26,11 @@ import {
   Check,
   Target,
   BarChart3,
-  TrendingUp,
-  FileText,
-  Compass
+  TrendingUp, 
+  FileText, 
+  Compass,
+  Menu,
+  X
 } from 'lucide-react';
 import FirebaseSettingsModal from '../components/common/FirebaseSettingsModal';
 
@@ -36,6 +38,7 @@ export default function LandingPage({ onGoToLogin }) {
   const { loginAsRole } = useAuth();
   const [activeFaq, setActiveFaq] = useState(null);
   const [showConfigModal, setShowConfigModal] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleQuickLogin = (role) => {
     loginAsRole(role);
@@ -163,30 +166,101 @@ export default function LandingPage({ onGoToLogin }) {
               <a href="#bantuan" className="hover:text-brand-800 transition-colors">Pusat Bantuan</a>
             </div>
 
-            {/* Action CTA */}
-            <div className="flex items-center space-x-2.5">
+            {/* Action CTA & Mobile Hamburger */}
+            <div className="flex items-center space-x-2">
               <button
                 type="button"
                 onClick={() => setShowConfigModal(true)}
                 title="Masukkan Firebase API Key / Hubungkan Cloud"
-                className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 rounded-xl text-xs font-semibold border border-slate-200 transition-all"
+                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 rounded-xl text-xs font-semibold border border-slate-200 transition-all"
               >
                 <Database className="w-3.5 h-3.5 text-amber-500" />
-                <span className="hidden sm:inline">Firebase API Key</span>
+                <span>Firebase Key</span>
               </button>
 
               <button
                 onClick={onGoToLogin}
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand-800 hover:bg-brand-900 text-white rounded-xl text-xs font-bold shadow-md shadow-brand-950/10 transition-all transform hover:-translate-y-0.5"
+                className="inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 bg-brand-800 hover:bg-brand-900 text-white rounded-xl text-xs font-bold shadow-md shadow-brand-950/10 transition-all transform hover:-translate-y-0.5"
               >
                 <Lock className="w-3.5 h-3.5" />
-                <span>Masuk Portal LMS</span>
+                <span className="hidden sm:inline">Masuk Portal LMS</span>
+                <span className="sm:hidden">Masuk</span>
                 <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+
+              {/* Hamburger Button on Mobile */}
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="md:hidden p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+                aria-label="Menu Mobile"
+              >
+                {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
               </button>
             </div>
 
           </div>
         </div>
+
+        {/* Collapsible Mobile Navigation Menu */}
+        {mobileMenuOpen && (
+          <div className="md:hidden border-t border-slate-200 bg-white px-4 pt-3 pb-5 space-y-2.5 shadow-lg animate-in fade-in slide-in-from-top-2">
+            <a 
+              href="#beranda" 
+              onClick={() => setMobileMenuOpen(false)}
+              className="block px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 hover:text-brand-800"
+            >
+              Beranda
+            </a>
+            <a 
+              href="#panduan" 
+              onClick={() => setMobileMenuOpen(false)}
+              className="block px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 hover:text-brand-800"
+            >
+              Panduan LMS
+            </a>
+            <a 
+              href="#kurikulum" 
+              onClick={() => setMobileMenuOpen(false)}
+              className="block px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 hover:text-brand-800"
+            >
+              Kurikulum & RPS
+            </a>
+            <a 
+              href="#bantuan" 
+              onClick={() => setMobileMenuOpen(false)}
+              className="block px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 hover:text-brand-800"
+            >
+              Pusat Bantuan
+            </a>
+            
+            <div className="pt-2 border-t border-slate-100 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowConfigModal(true);
+                  setMobileMenuOpen(false);
+                }}
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-800 rounded-xl text-xs font-semibold"
+              >
+                <Database className="w-3.5 h-3.5 text-amber-500" />
+                <span>⚙️ Konfigurasi Firebase API Key</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  onGoToLogin();
+                  setMobileMenuOpen(false);
+                }}
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 bg-brand-800 text-white rounded-xl text-xs font-bold shadow-md"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span>Masuk Portal LMS</span>
+              </button>
+            </div>
+          </div>
+        )}
       </nav>
 
       {/* 2. HERO SECTION */}
