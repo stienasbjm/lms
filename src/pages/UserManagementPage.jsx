@@ -62,7 +62,7 @@ export default function UserManagementPage() {
   const [createForm, setCreateForm] = useState({
     name: '',
     email: '',
-    password: 'password123',
+    password: '',
     role: 'MAHASISWA',
     nim: '',
     nidn: '',
@@ -153,7 +153,7 @@ export default function UserManagementPage() {
     setCreateForm({
       name: '',
       email: '',
-      password: 'password123',
+      password: '',
       role: defaultRole,
       nim: generateSuggestedNim(defaultAngkatan, defaultProdi),
       nidn: '',
@@ -609,10 +609,11 @@ export default function UserManagementPage() {
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Kata Sandi Awal *</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Kata Sandi Akun *</label>
                   <input
                     type="text"
                     required
+                    placeholder="Ketik kata sandi (min. 6 karakter)..."
                     value={createForm.password}
                     onChange={e => setCreateForm({ ...createForm, password: e.target.value })}
                     className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-brand-500 font-mono"
@@ -1038,10 +1039,10 @@ export default function UserManagementPage() {
                 <div className="flex flex-wrap gap-2 items-center pt-1">
                   <button
                     type="button"
-                    onClick={() => setManageForm({ ...manageForm, newPassword: 'stienas123' })}
+                    onClick={() => setManageForm({ ...manageForm, newPassword: 'stienas2026' })}
                     className="text-[10px] text-indigo-700 bg-white px-2.5 py-1 rounded-lg border border-indigo-200 hover:bg-indigo-50 font-semibold"
                   >
-                    ⚡ Default: stienas123
+                    ⚡ Default: stienas2026
                   </button>
                   <button
                     type="button"

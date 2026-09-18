@@ -315,7 +315,7 @@ export async function createUser(userData, currentUser) {
     name: userData.name || 'Pengguna Baru',
     email: userData.email,
     username: userData.username || userData.email.split('@')[0],
-    password: userData.password || 'stienas123',
+    password: userData.password ? userData.password.trim() : 'stienas2026',
     role: userData.role,
     nim: userData.role === 'MAHASISWA' ? (userData.nim || '') : undefined,
     nidn: userData.role === 'DOSEN' ? (userData.nidn || '') : undefined,
@@ -429,7 +429,7 @@ export async function resetUserPassword(uid, newPassword, currentUser) {
     }
   }
 
-  const passwordToSet = newPassword || 'stienas123';
+  const passwordToSet = (newPassword && newPassword.trim()) || 'stienas2026';
   const updated = list.map(u => {
     if (u.uid === uid) {
       return { ...u, password: passwordToSet };
@@ -461,7 +461,7 @@ export async function registerStudent(studentData) {
     name: studentData.name || 'Mahasiswa Baru',
     email: emailClean,
     username: emailClean.split('@')[0],
-    password: studentData.password || 'mhs123',
+    password: (studentData.password && studentData.password.trim()) || 'mhs2026',
     role: 'MAHASISWA',
     nim: studentData.nim || `261011${Math.floor(100 + Math.random() * 900)}`,
     angkatan: studentData.angkatan || 2026,

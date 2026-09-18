@@ -48,12 +48,19 @@ export async function loginUser(identifier, password) {
             u.uid === storedU.uid || 
             (u.email && storedU.email && u.email.toLowerCase() === storedU.email.toLowerCase())
           );
+          // Jika ada akun admin di localStorage yang masih memakai password usang admin123, otomatis mutakhirkan ke admin126
+          if ((storedU.username === 'admin' || storedU.role === 'SUPER_ADMIN') && storedU.password === 'admin123') {
+            storedU.password = 'admin126';
+          }
+
           if (idx >= 0) {
             combinedUsers[idx] = { 
               ...combinedUsers[idx], 
               ...storedU,
-              // Prioritaskan password dari data tersimpan jika ada pembaruan
-              password: storedU.password || combinedUsers[idx].password,
+              // Prioritaskan password dari data yang disimpan/diubah oleh Admin/BAA
+              password: storedU.password !== undefined && storedU.password !== '' 
+                ? storedU.password 
+                : combinedUsers[idx].password,
               // Hormati status keaktifan akun dari data tersimpan
               isActive: storedU.isActive !== undefined ? storedU.isActive : combinedUsers[idx].isActive 
             };
@@ -90,30 +97,15 @@ export async function loginUser(identifier, password) {
     }
 
     // B. Validasi kata sandi KETAT (Strict Password Verification):
-    // Kata sandi HARUS tepat sesuai dengan data yang tersimpan pada akun, sembarang huruf/angka akan ditolak
-    const validPasswords = new Set();
-    
-    // 1) Password dari profil akun tersimpan
-    if (foundUser.password) {
-      validPasswords.add(foundUser.password);
+    // Kata sandi HARUS tepat sesuai dengan data yang dibuat/diubah oleh Admin dan BAA.
+    // Password usang seperti admin123 telah dihilangkan sepenuhnya karena telah diganti menjadi admin126.
+    const expectedPassword = foundUser.password ? String(foundUser.password).trim() : '';
+
+    if (!expectedPassword) {
+      throw new Error("Akun ini belum memiliki kata sandi yang disetel. Silakan hubungi Administrator STIE Nasional.");
     }
 
-    // 2) Kredensial bawaan resmi institusi per peran akun (misal admin: admin126 / admin123, akademik: akademik123)
-    if (foundUser.role === 'SUPER_ADMIN' || foundUser.role === 'ADMIN' || foundUser.username === 'admin') {
-      validPasswords.add('admin126');
-      validPasswords.add('admin123');
-    } else if (foundUser.role === 'ADMIN_AKADEMIK' || foundUser.role === 'BAA' || foundUser.username === 'akademik') {
-      validPasswords.add('akademik123');
-    } else if (foundUser.role === 'DOSEN' || foundUser.username === 'dosen') {
-      validPasswords.add('dosen123');
-    } else if (foundUser.role === 'MAHASISWA' || foundUser.username === 'mahasiswa') {
-      validPasswords.add('mhs123');
-    }
-
-    // Pengecekan kecocokan password yang ketat
-    const isMatch = Array.from(validPasswords).some(validPass => validPass === rawPass);
-
-    if (!isMatch) {
+    if (rawPass !== expectedPassword) {
       throw new Error("Kata sandi yang Anda masukkan salah. Silakan periksa kembali kata sandi akun Anda.");
     }
 
