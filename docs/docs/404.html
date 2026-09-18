@@ -1,28 +1,39 @@
 <!doctype html>
 <html lang="id">
   <head>
-    <script>
-      // 1. Enforce trailing slash on /docs to guarantee relative assets (./assets/...) resolve accurately
-      if (window.location.hostname.endsWith('github.io') && window.location.pathname.endsWith('/docs')) {
-        window.location.replace(window.location.pathname + '/' + window.location.search + window.location.hash);
-      }
-    </script>
     <meta charset="UTF-8" />
-    
-    <link rel="icon" type="image/png" href="./favicon.png" />
-    <link rel="shortcut icon" href="./favicon.png" />
-    <link rel="apple-touch-icon" href="./logo-stienas.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LMS STIE Nasional Banjarmasin</title>
-    <meta name="description" content="Learning Management System (LMS) STIE Nasional Banjarmasin - Sistem Manajemen Pembelajaran Digital Modern & Cepat" />
-    <!-- Google Fonts Inter -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <script type="module" crossorigin src="./assets/index-D9WsIinZ.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-Co-4Zv8d.css">
+    <title>Memuat LMS STIE Nasional...</title>
+    <script>
+      (function() {
+        var hostname = window.location.hostname;
+        var pathname = window.location.pathname;
+        var search = window.location.search || '';
+        var hash = window.location.hash || '';
+
+        if (hostname.endsWith('github.io')) {
+          var parts = pathname.split('/').filter(Boolean);
+          var repo = parts.length > 0 ? parts[0] : 'lms';
+          var targetPath = '/' + repo + '/docs/';
+
+          // Jika URL saat ini bukan target /docs/, alihkan langsung ke portal LMS
+          // Cek pathname !== targetPath menjamin tidak akan terjadi reload berulang kali
+          if (pathname !== targetPath) {
+            window.location.replace(targetPath + search + hash);
+          }
+        } else {
+          if (pathname !== '/' && pathname !== '/docs/' && pathname !== '/docs') {
+            window.location.replace('/' + search + hash);
+          }
+        }
+      })();
+    </script>
   </head>
-  <body class="bg-slate-50 text-slate-900 antialiased font-sans min-h-screen">
-    <div id="root"></div>
+  <body style="font-family: 'Inter', system-ui, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background-color: #f8fafc; color: #1e293b;">
+    <div style="text-align: center; padding: 2rem; max-width: 480px; background: white; border-radius: 1rem; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+      <h2 style="font-size: 1.25rem; font-weight: 700; color: #0f172a; margin-bottom: 0.5rem;">LMS STIE Nasional Banjarmasin</h2>
+      <p style="font-size: 0.875rem; color: #64748b; margin-bottom: 1.5rem;">Halaman tidak ditemukan. Mengalihkan Anda kembali ke portal pembelajaran digital...</p>
+      <a href="/lms/docs/" style="display: inline-block; padding: 0.625rem 1.25rem; background-color: #1e3a8a; color: white; border-radius: 0.75rem; font-size: 0.875rem; font-weight: 600; text-decoration: none;">Klik di sini jika tidak beralih otomatis</a>
+    </div>
   </body>
 </html>

@@ -12,6 +12,48 @@ const docsSubDocsDir = path.join(docsDir, 'docs');
 
 console.log('Running robust post-build optimizations for GitHub Pages...');
 
+// Safe, loop-free 404 redirect template for GitHub Pages
+const root404Content = `<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Memuat LMS STIE Nasional...</title>
+    <script>
+      (function() {
+        var hostname = window.location.hostname;
+        var pathname = window.location.pathname;
+        var search = window.location.search || '';
+        var hash = window.location.hash || '';
+
+        if (hostname.endsWith('github.io')) {
+          var parts = pathname.split('/').filter(Boolean);
+          var repo = parts.length > 0 ? parts[0] : 'lms';
+          var targetPath = '/' + repo + '/docs/';
+
+          // Jika URL saat ini bukan target /docs/, alihkan langsung ke portal LMS
+          // Cek pathname !== targetPath menjamin tidak akan terjadi reload berulang kali
+          if (pathname !== targetPath) {
+            window.location.replace(targetPath + search + hash);
+          }
+        } else {
+          if (pathname !== '/' && pathname !== '/docs/' && pathname !== '/docs') {
+            window.location.replace('/' + search + hash);
+          }
+        }
+      })();
+    </script>
+  </head>
+  <body style="font-family: 'Inter', system-ui, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background-color: #f8fafc; color: #1e293b;">
+    <div style="text-align: center; padding: 2rem; max-width: 480px; background: white; border-radius: 1rem; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+      <h2 style="font-size: 1.25rem; font-weight: 700; color: #0f172a; margin-bottom: 0.5rem;">LMS STIE Nasional Banjarmasin</h2>
+      <p style="font-size: 0.875rem; color: #64748b; margin-bottom: 1.5rem;">Halaman tidak ditemukan. Mengalihkan Anda kembali ke portal pembelajaran digital...</p>
+      <a href="/lms/docs/" style="display: inline-block; padding: 0.625rem 1.25rem; background-color: #1e3a8a; color: white; border-radius: 0.75rem; font-size: 0.875rem; font-weight: 600; text-decoration: none;">Klik di sini jika tidak beralih otomatis</a>
+    </div>
+  </body>
+</html>
+`;
+
 // 1. Read dist/index.html, clean redirect script, and inject trailing slash resolver
 const distIndex = path.join(distDir, 'index.html');
 if (fs.existsSync(distIndex)) {
@@ -36,10 +78,10 @@ if (fs.existsSync(distIndex)) {
   fs.writeFileSync(distIndex, content, 'utf8');
   console.log('✓ Injected trailing slash & relative asset safety into dist/index.html');
 
-  // 2. Create dist/404.html for SPA routing
+  // 2. Create dist/404.html with safe redirect back to /docs/
   const dist404 = path.join(distDir, '404.html');
-  fs.writeFileSync(dist404, content, 'utf8');
-  console.log('✓ Created dist/404.html for GitHub Pages SPA routing');
+  fs.writeFileSync(dist404, root404Content, 'utf8');
+  console.log('✓ Created dist/404.html with safe redirect for GitHub Pages SPA routing');
 }
 
 // 3. Add .nojekyll to dist
@@ -76,30 +118,6 @@ if (fs.existsSync(distAssets)) {
 fs.writeFileSync(path.join(rootDir, '.nojekyll'), '', 'utf8');
 console.log('✓ Created root /.nojekyll (disables Jekyll processing at repository root)');
 
-const root404Content = `<!doctype html>
-<html lang="id">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Memuat LMS STIE Nasional...</title>
-    <script>
-      var path = window.location.pathname;
-      if (!path.includes('/docs')) {
-        window.location.replace('/lms/docs/' + window.location.search + window.location.hash);
-      } else {
-        window.location.replace(path + (path.endsWith('/') ? '' : '/') + window.location.search + window.location.hash);
-      }
-    </script>
-  </head>
-  <body style="font-family: 'Inter', system-ui, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background-color: #f8fafc; color: #1e293b;">
-    <div style="text-align: center; padding: 2rem; max-width: 480px; background: white; border-radius: 1rem; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-      <h2 style="font-size: 1.25rem; font-weight: 700; color: #0f172a; margin-bottom: 0.5rem;">LMS STIE Nasional Banjarmasin</h2>
-      <p style="font-size: 0.875rem; color: #64748b; margin-bottom: 1.5rem;">Sedang mengalihkan Anda ke portal pembelajaran digital...</p>
-      <a href="/lms/docs/" style="display: inline-block; padding: 0.625rem 1.25rem; background-color: #1e3a8a; color: white; border-radius: 0.75rem; font-size: 0.875rem; font-weight: 600; text-decoration: none;">Klik di sini jika tidak beralih otomatis</a>
-    </div>
-  </body>
-</html>
-`;
 fs.writeFileSync(path.join(rootDir, '404.html'), root404Content, 'utf8');
 console.log('✓ Created root /404.html (handles SPA route redirection for GitHub Pages)');
 
