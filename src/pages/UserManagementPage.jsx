@@ -117,7 +117,8 @@ export default function UserManagementPage() {
     if (!target) return false;
     if (isSuperAdmin) return true;
     if (isBaa) {
-      return target.role === 'DOSEN' || target.role === 'MAHASISWA';
+      const r = (target.role || '').toUpperCase();
+      return r === 'DOSEN' || r === 'MAHASISWA';
     }
     return false;
   };
@@ -125,7 +126,10 @@ export default function UserManagementPage() {
   // Filter Pengguna Efektif:
   // Jika BAA: batasi data HANYA Dosen & Mahasiswa saja
   const effectiveUsers = (!isSuperAdmin && isBaa)
-    ? users.filter(u => u.role === 'DOSEN' || u.role === 'MAHASISWA')
+    ? users.filter(u => {
+        const r = (u.role || '').toUpperCase();
+        return r === 'DOSEN' || r === 'MAHASISWA';
+      })
     : users;
 
   // Search and Filter
@@ -135,19 +139,23 @@ export default function UserManagementPage() {
                         (u.nim || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                         (u.nidn || '').toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchRole = roleFilter === 'ALL' || u.role === roleFilter;
+    const uRole = (u.role || '').toUpperCase();
+    const matchRole = roleFilter === 'ALL' || uRole === roleFilter.toUpperCase();
     return matchSearch && matchRole;
   });
 
-  const studentCount = effectiveUsers.filter(u => u.role === 'MAHASISWA').length;
-  const lecturerCount = effectiveUsers.filter(u => u.role === 'DOSEN').length;
-  const staffCount = users.filter(u => u.role === 'ADMIN_AKADEMIK' || u.role === 'SUPER_ADMIN').length;
+  const studentCount = effectiveUsers.filter(u => (u.role || '').toUpperCase() === 'MAHASISWA').length;
+  const lecturerCount = effectiveUsers.filter(u => (u.role || '').toUpperCase() === 'DOSEN').length;
+  const staffCount = users.filter(u => {
+    const r = (u.role || '').toUpperCase();
+    return r === 'ADMIN_AKADEMIK' || r === 'SUPER_ADMIN' || r === 'AKADEMIK' || r === 'ADMIN' || r === 'BAA';
+  }).length;
 
   // ==========================================
   // HANDLERS: TAMBAH AKUN BARU
   // ==========================================
   const handleOpenCreate = () => {
-    const defaultRole = 'MAHASISWA';
+    const defaultRole = roleFilter === 'DOSEN' ? 'DOSEN' : 'MAHASISWA';
     const defaultAngkatan = 2026;
     const defaultProdi = prodis[0]?.id || 'prodi-s1-manajemen';
     setCreateForm({
@@ -155,8 +163,8 @@ export default function UserManagementPage() {
       email: '',
       password: '',
       role: defaultRole,
-      nim: generateSuggestedNim(defaultAngkatan, defaultProdi),
-      nidn: '',
+      nim: defaultRole === 'MAHASISWA' ? generateSuggestedNim(defaultAngkatan, defaultProdi) : '',
+      nidn: defaultRole === 'DOSEN' ? ('110508' + Math.floor(1000 + Math.random() * 9000)) : '',
       angkatan: defaultAngkatan,
       prodiId: defaultProdi,
       phone: '',
@@ -173,10 +181,16 @@ export default function UserManagementPage() {
     }
 
     try {
-      await createUser(createForm, currentUser);
+      const created = await createUser(createForm, currentUser);
       setShowCreateModal(false);
+      // Reset pencarian dan filter ke Semua Peran agar akun yang baru ditambahkan langsung terlihat
+      setSearchTerm('');
+      setRoleFilter('ALL');
       await loadData();
-      showSuccessAlert("Akun Berhasil Dibuat", `Akun ${createForm.name} (${createForm.role}) berhasil ditambahkan ke dalam LMS!`);
+      showSuccessAlert(
+        "Akun Berhasil Dibuat", 
+        `Akun ${created?.name || createForm.name} (${(created?.role || createForm.role).toUpperCase()}) berhasil ditambahkan ke dalam Master Akun LMS!`
+      );
     } catch (err) {
       showErrorAlert("Gagal Menambahkan Akun", err.message);
     }
@@ -438,7 +452,8 @@ export default function UserManagementPage() {
               ) : (
                 filteredUsers.map(u => {
                   const manageable = canManageUser(u);
-                  const isMhs = u.role === 'MAHASISWA';
+                  const uRole = (u.role || '').toUpperCase();
+                  const isMhs = uRole === 'MAHASISWA';
                   const academicStanding = isMhs && u.nim ? calculateAcademicStanding(u.nim, u.angkatan) : null;
 
                   return (
@@ -485,12 +500,12 @@ export default function UserManagementPage() {
 
                       <td className="p-3.5">
                         <span className={`px-2.5 py-0.5 rounded-full font-bold text-[10px] border ${
-                          u.role === 'SUPER_ADMIN' ? 'bg-purple-100 text-purple-800 border-purple-300' :
-                          u.role === 'ADMIN_AKADEMIK' ? 'bg-indigo-100 text-indigo-800 border-indigo-300' :
-                          u.role === 'DOSEN' ? 'bg-blue-100 text-blue-800 border-blue-300' :
+                          uRole === 'SUPER_ADMIN' ? 'bg-purple-100 text-purple-800 border-purple-300' :
+                          (uRole === 'ADMIN_AKADEMIK' || uRole === 'AKADEMIK' || uRole === 'BAA') ? 'bg-indigo-100 text-indigo-800 border-indigo-300' :
+                          uRole === 'DOSEN' ? 'bg-blue-100 text-blue-800 border-blue-300' :
                           'bg-emerald-100 text-emerald-800 border-emerald-300'
                         }`}>
-                          {u.role === 'ADMIN_AKADEMIK' ? 'ADMIN BAA' : u.role}
+                          {(uRole === 'ADMIN_AKADEMIK' || uRole === 'AKADEMIK' || uRole === 'BAA') ? 'ADMIN BAA' : uRole}
                         </span>
                       </td>
 

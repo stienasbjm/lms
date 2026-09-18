@@ -84,6 +84,16 @@ export function getCollectionName(key) {
 }
 
 export async function getLocal(key, initial) {
+  let localItems = [];
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      localItems = JSON.parse(raw);
+    }
+  } catch (e) {
+    console.warn("Storage read error:", e);
+  }
+
   let fbLoaded = false;
   if (isRealFirebaseConfigured() && db) {
     const colName = getCollectionName(key);
@@ -91,16 +101,59 @@ export async function getLocal(key, initial) {
       try {
         const snap = await getDocs(collection(db, colName));
         if (!snap.empty) {
-          const items = snap.docs.map(d => {
+          const remoteItems = snap.docs.map(d => {
             const data = d.data();
             if (!data.uid && !data.id) {
                data.id = d.id;
             }
+            if (data.id && !data.uid) {
+               data.uid = data.id;
+            }
+            if (data.uid && !data.id) {
+               data.id = data.uid;
+            }
             return data;
           });
-          localStorage.setItem(key, JSON.stringify(items));
+
+          // Ambil daftar ID yang pernah dihapus secara lokal agar tidak dibangkitkan kembali
+          let deletedIds = [];
+          if (key === STORAGE_KEYS.USERS) {
+            try {
+              const delRaw = localStorage.getItem('STIE_LMS_DELETED_USERS');
+              if (delRaw) deletedIds = JSON.parse(delRaw);
+            } catch(e) {}
+          }
+
+          // Gabungkan remoteItems dan localItems (pertahankan data lokal baru yang belum sempat tersinkron)
+          let finalItems = remoteItems;
+          if (Array.isArray(localItems) && localItems.length > 0) {
+            const itemMap = new Map();
+            // Masukkan data lokal terlebih dahulu
+            localItems.forEach(item => {
+              const id = item.uid || item.id || item.email || item.kodeMk || item.kodeTa;
+              if (id) itemMap.set(String(id), item);
+            });
+            // Update / gabungkan dengan data dari Firestore
+            remoteItems.forEach(item => {
+              const id = item.uid || item.id || item.email || item.kodeMk || item.kodeTa;
+              if (id) {
+                const existing = itemMap.get(String(id));
+                itemMap.set(String(id), { ...(existing || {}), ...item });
+              }
+            });
+            finalItems = Array.from(itemMap.values());
+          }
+
+          if (deletedIds.length > 0) {
+            finalItems = finalItems.filter(item => {
+              const id = item.uid || item.id;
+              return !deletedIds.includes(id);
+            });
+          }
+
+          localStorage.setItem(key, JSON.stringify(finalItems));
           fbLoaded = true;
-          return items;
+          return finalItems;
         }
       } catch(e) {
         console.warn("Firestore getLocal error:", e);
@@ -108,18 +161,11 @@ export async function getLocal(key, initial) {
     }
   }
 
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw) {
-       const parsed = JSON.parse(raw);
-       // Jika data diambil dari lokal, dorong naik ke Firebase
-       if (!fbLoaded && isRealFirebaseConfigured()) {
-          await setLocal(key, parsed);
-       }
-       return parsed;
+  if (Array.isArray(localItems) && localItems.length > 0) {
+    if (!fbLoaded && isRealFirebaseConfigured()) {
+       await setLocal(key, localItems);
     }
-  } catch (e) {
-    console.warn("Storage read error:", e);
+    return localItems;
   }
   await setLocal(key, initial);
   return initial;
@@ -133,31 +179,25 @@ export async function setLocal(key, value) {
     if (isRealFirebaseConfigured() && db) {
       const colName = getCollectionName(key);
       if (colName && Array.isArray(value)) {
-        const existingSnap = await getDocs(collection(db, colName));
-        const newIds = value.map(v => v.uid || v.id).filter(Boolean);
-        
-        const batch = writeBatch(db);
-        let count = 0;
-        
-        existingSnap.docs.forEach(d => {
-          if (!newIds.includes(d.id)) {
-            batch.delete(doc(db, colName, d.id));
-            count++;
+        try {
+          const batch = writeBatch(db);
+          let count = 0;
+          
+          value.forEach(item => {
+            const id = item.uid || item.id;
+            if (id) {
+              batch.set(doc(db, colName, String(id)), item, { merge: true });
+              count++;
+            }
+          });
+          
+          if (count > 0 && count <= 500) {
+             await batch.commit();
+          } else if (count > 500) {
+             console.warn("Batch size exceeds 500, skipping sync.");
           }
-        });
-        
-        value.forEach(item => {
-          const id = item.uid || item.id;
-          if (id) {
-            batch.set(doc(db, colName, String(id)), item, { merge: true });
-            count++;
-          }
-        });
-        
-        if (count > 0 && count <= 500) {
-           await batch.commit();
-        } else if (count > 500) {
-           console.warn("Batch size exceeds 500, skipping sync.");
+        } catch (batchErr) {
+          console.warn("Firestore setLocal batch sync warning:", batchErr);
         }
       }
     }
@@ -372,36 +412,58 @@ export async function createUser(userData, currentUser) {
   const isSuperAdmin = currentRole === 'SUPER_ADMIN' || currentRole === 'ADMIN';
   const isBaa = currentRole === 'ADMIN_AKADEMIK' || currentRole === 'AKADEMIK' || currentRole === 'BAA';
 
+  const role = (userData.role || 'MAHASISWA').toUpperCase();
+
   // Validasi otoritas BAA vs Super Admin
   if (isBaa && !isSuperAdmin) {
-    if (userData.role !== 'DOSEN' && userData.role !== 'MAHASISWA') {
+    if (role !== 'DOSEN' && role !== 'MAHASISWA') {
       throw new Error("Bagian Akademik (BAA) hanya memiliki wewenang mengelola akun Dosen dan Mahasiswa.");
     }
   }
 
   // Cek duplikasi email / username / NIM
-  const emailExists = list.some(u => u.email?.toLowerCase() === (userData.email || '').trim().toLowerCase());
+  const targetEmail = (userData.email || '').trim().toLowerCase();
+  const emailExists = list.some(u => (u.email || '').trim().toLowerCase() === targetEmail);
   if (emailExists) {
     throw new Error(`Email ${userData.email} sudah terdaftar dalam sistem.`);
   }
 
-  const newUid = `user-${userData.role.toLowerCase()}-${Date.now()}`;
+  const newUid = `user-${role.toLowerCase()}-${Date.now()}`;
   const newUser = {
     uid: newUid,
-    name: userData.name || 'Pengguna Baru',
-    email: userData.email,
-    username: userData.username || userData.email.split('@')[0],
+    id: newUid,
+    name: (userData.name || 'Pengguna Baru').trim(),
+    email: (userData.email || '').trim(),
+    username: (userData.username || userData.email.split('@')[0] || '').trim(),
     password: userData.password ? userData.password.trim() : 'stienas2026',
-    role: userData.role,
-    nim: userData.role === 'MAHASISWA' ? (userData.nim ? String(userData.nim).replace(/\D/g, '') : '') : undefined,
-    nidn: userData.role === 'DOSEN' ? (userData.nidn || '') : undefined,
-    angkatan: userData.angkatan || undefined,
+    role: role,
+    nim: role === 'MAHASISWA' ? (userData.nim ? String(userData.nim).replace(/\D/g, '') : '') : undefined,
+    nidn: role === 'DOSEN' ? (userData.nidn || '').trim() : undefined,
+    angkatan: userData.angkatan ? Number(userData.angkatan) : undefined,
     prodiId: userData.prodiId || undefined,
-    phone: userData.phone || '',
+    phone: (userData.phone || '').trim(),
     isActive: userData.isActive !== undefined ? userData.isActive : true,
-    avatarUrl: userData.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.name)}&background=1e3a8a&color=fff`,
+    avatarUrl: userData.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.name || 'User')}&background=1e3a8a&color=fff`,
     createdAt: new Date().toISOString()
   };
+
+  // Bersihkan dari daftar terhapus jika pernah tercatat
+  try {
+    const delRaw = localStorage.getItem('STIE_LMS_DELETED_USERS');
+    if (delRaw) {
+      const delList = JSON.parse(delRaw).filter(id => id !== newUid && id !== newUser.email);
+      localStorage.setItem('STIE_LMS_DELETED_USERS', JSON.stringify(delList));
+    }
+  } catch (e) {}
+
+  // Direct Firestore write attempt jika online
+  if (isRealFirebaseConfigured() && db) {
+    try {
+      await setDoc(doc(db, "users", newUid), newUser, { merge: true });
+    } catch (e) {
+      console.warn("Direct Firestore createUser setDoc warning (data tetap tersimpan di lokal):", e);
+    }
+  }
 
   list.push(newUser);
   await setLocal(STORAGE_KEYS.USERS, list);
@@ -415,7 +477,7 @@ export async function createUser(userData, currentUser) {
 
 export async function updateUser(uid, userData, currentUser) {
   const list = await getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
-  const target = list.find(u => u.uid === uid);
+  const target = list.find(u => u.uid === uid || u.id === uid);
   if (!target) throw new Error("Pengguna tidak ditemukan.");
 
   const currentRole = (currentUser?.role || '').toUpperCase();
@@ -424,15 +486,19 @@ export async function updateUser(uid, userData, currentUser) {
 
   // Proteksi hak akses BAA
   if (isBaa && !isSuperAdmin) {
-    if (target.role === 'SUPER_ADMIN' || target.role === 'ADMIN_AKADEMIK') {
+    const targetRole = (target.role || '').toUpperCase();
+    if (targetRole === 'SUPER_ADMIN' || targetRole === 'ADMIN_AKADEMIK') {
       throw new Error("Bagian Akademik (BAA) tidak diizinkan mengubah akun Administrator atau sesama BAA.");
     }
-    if (userData.role && userData.role !== 'DOSEN' && userData.role !== 'MAHASISWA') {
+    if (userData.role && (userData.role || '').toUpperCase() !== 'DOSEN' && (userData.role || '').toUpperCase() !== 'MAHASISWA') {
       throw new Error("Bagian Akademik (BAA) hanya dapat mengatur peran Dosen atau Mahasiswa.");
     }
   }
 
   const cleanUserData = { ...userData };
+  if (cleanUserData.role) {
+    cleanUserData.role = (cleanUserData.role || '').toUpperCase();
+  }
   if (cleanUserData.nim !== undefined) {
     cleanUserData.nim = String(cleanUserData.nim || '').replace(/\D/g, '');
   }
@@ -442,12 +508,22 @@ export async function updateUser(uid, userData, currentUser) {
     cleanUserData.password = cleanUserData.password.trim();
   }
 
+  // Update langsung ke Firestore jika online
+  if (isRealFirebaseConfigured() && db) {
+    try {
+      await setDoc(doc(db, "users", String(uid)), cleanUserData, { merge: true });
+    } catch (e) {
+      console.warn("Direct Firestore updateUser setDoc warning:", e);
+    }
+  }
+
   const updated = list.map(u => {
-    if (u.uid === uid) {
+    if (u.uid === uid || u.id === uid) {
       return {
         ...u,
         ...cleanUserData,
-        uid: u.uid // Jangan ubah uid
+        uid: u.uid || uid,
+        id: u.id || uid
       };
     }
     return u;
@@ -464,10 +540,10 @@ export async function updateUser(uid, userData, currentUser) {
 
 export async function deleteUser(uid, currentUser) {
   const list = await getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
-  const target = list.find(u => u.uid === uid);
+  const target = list.find(u => u.uid === uid || u.id === uid);
   if (!target) throw new Error("Pengguna tidak ditemukan.");
 
-  if (target.uid === currentUser?.uid) {
+  if (target.uid === currentUser?.uid || target.id === currentUser?.uid) {
     throw new Error("Anda tidak dapat menghapus akun Anda sendiri.");
   }
 
@@ -477,12 +553,31 @@ export async function deleteUser(uid, currentUser) {
 
   // Proteksi hak akses BAA
   if (isBaa && !isSuperAdmin) {
-    if (target.role === 'SUPER_ADMIN' || target.role === 'ADMIN_AKADEMIK') {
+    const targetRole = (target.role || '').toUpperCase();
+    if (targetRole === 'SUPER_ADMIN' || targetRole === 'ADMIN_AKADEMIK') {
       throw new Error("Bagian Akademik (BAA) tidak diizinkan menghapus akun Administrator atau sesama BAA.");
     }
   }
 
-  const updated = list.filter(u => u.uid !== uid);
+  // Tandai di STIE_LMS_DELETED_USERS agar tidak dibangkitkan kembali oleh Firestore getLocal
+  try {
+    const delRaw = localStorage.getItem('STIE_LMS_DELETED_USERS') || '[]';
+    const delList = JSON.parse(delRaw);
+    if (!delList.includes(uid)) {
+      delList.push(uid);
+      localStorage.setItem('STIE_LMS_DELETED_USERS', JSON.stringify(delList));
+    }
+  } catch (e) {}
+
+  if (isRealFirebaseConfigured() && db) {
+    try {
+      await deleteDoc(doc(db, "users", String(uid)));
+    } catch (e) {
+      console.warn("Direct Firestore deleteUser deleteDoc warning:", e);
+    }
+  }
+
+  const updated = list.filter(u => u.uid !== uid && u.id !== uid);
   await setLocal(STORAGE_KEYS.USERS, updated);
   await logAudit(
     currentUser, 
