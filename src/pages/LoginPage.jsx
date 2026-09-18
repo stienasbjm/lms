@@ -154,17 +154,6 @@ export default function LoginPage({ onBackToLanding }) {
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md z-10 px-4">
         
-        {/* Back button to Landing Page */}
-        {onBackToLanding && (
-          <button
-            type="button"
-            onClick={onBackToLanding}
-            className="inline-flex items-center gap-1.5 text-xs text-slate-300 hover:text-white font-medium mb-4 transition-colors group"
-          >
-            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
-            <span>Kembali ke Beranda (Landing Page)</span>
-          </button>
-        )}
 
         <div className="text-center">
           <div className="inline-flex items-center justify-center mb-3">
@@ -557,6 +546,20 @@ export default function LoginPage({ onBackToLanding }) {
           )}
 
         </div>
+
+        {/* Back button to Landing Page dipindahkan ke bagian bawah */}
+        {onBackToLanding && (
+          <div className="text-center mt-5 mb-4">
+            <button
+              type="button"
+              onClick={onBackToLanding}
+              className="inline-flex items-center gap-2 text-xs text-slate-300 hover:text-white font-semibold py-2 px-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all group"
+            >
+              <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform text-gold-400" />
+              <span>Kembali ke Beranda (Landing Page)</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {showConfigModal && (

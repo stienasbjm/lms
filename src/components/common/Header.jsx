@@ -68,21 +68,23 @@ export default function Header({ onToggleSidebar }) {
 
             {/* Actions & Profile */}
             <div className="flex items-center space-x-3">
-              {/* Firebase Status Badge */}
-              <button 
-                onClick={() => setShowConfigModal(true)}
-                title="Klik untuk konfigurasi Firebase Backend"
-                className={`flex items-center space-x-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition-all ${
-                  isFirebaseLive 
-                    ? 'bg-amber-50 border-amber-300 text-amber-900 hover:bg-amber-100' 
-                    : 'bg-emerald-50 border-emerald-300 text-emerald-900 hover:bg-emerald-100'
-                }`}
-              >
-                <Database className="w-3.5 h-3.5 text-amber-600" />
-                <span className="hidden sm:inline font-medium">
-                  {isFirebaseLive ? 'Firebase BaaS: Live' : 'Firebase: Demo/Config'}
-                </span>
-              </button>
+              {/* Firebase Status Badge - Hanya ditampilkan untuk Super Admin (disembunyikan pada Dosen, BAA, dan Mahasiswa) */}
+              {user?.role === 'SUPER_ADMIN' && (
+                <button 
+                  onClick={() => setShowConfigModal(true)}
+                  title="Klik untuk konfigurasi Firebase Backend"
+                  className={`flex items-center space-x-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition-all ${
+                    isFirebaseLive 
+                      ? 'bg-amber-50 border-amber-300 text-amber-900 hover:bg-amber-100' 
+                      : 'bg-emerald-50 border-emerald-300 text-emerald-900 hover:bg-emerald-100'
+                  }`}
+                >
+                  <Database className="w-3.5 h-3.5 text-amber-600" />
+                  <span className="hidden sm:inline font-medium">
+                    {isFirebaseLive ? 'Firebase BaaS: Live' : 'Firebase: Demo/Config'}
+                  </span>
+                </button>
+              )}
 
               {/* User Profile */}
               {user && (
