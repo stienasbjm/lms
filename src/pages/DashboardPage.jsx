@@ -77,13 +77,59 @@ export default function DashboardPage({ onNavigate }) {
 
   // Filter kelas sesuai peran dan TAHUN AKADEMIK AKTIF BAA
   const myClasses = isDosen 
-    ? classes.filter(c => isClassAssignedToLecturer(c, user) && (activeTa ? (c.tahunAkademikId === activeTa.id || c.namaTa === activeTa.namaTa) : false))
+    ? classes.filter(c => isClassAssignedToLecturer(c, user, mkList) && (activeTa ? (c.tahunAkademikId === activeTa.id || c.namaTa === activeTa.namaTa) : false))
     : isMahasiswa 
-    ? classes.filter(c => (c.enrolledStudents || []).includes(user.uid) && (activeTa ? (c.tahunAkademikId === activeTa.id || c.namaTa === activeTa.namaTa) : false))
+    ? classes.filter(c => (Array.isArray(c.enrolledStudents) && c.enrolledStudents.some(id => id === user?.uid || id === user?.id || (user?.nim && id === user?.nim))) && (activeTa ? (c.tahunAkademikId === activeTa.id || c.namaTa === activeTa.namaTa) : false))
     : (activeTa ? classes.filter(c => c.tahunAkademikId === activeTa.id || c.namaTa === activeTa.namaTa) : classes);
 
   const totalDosen = usersList.filter(u => u.role === 'DOSEN').length;
   const totalMahasiswa = usersList.filter(u => u.role === 'MAHASISWA').length;
+
+  // Hitung jumlah Mahasiswa Terdaftar dan Dosen Pengampu yang spesifik sesuai akun pengguna
+  let displayedMahasiswaCount = totalMahasiswa;
+  let displayedDosenCount = totalDosen;
+
+  if (isDosen) {
+    // 1. Akun Dosen:
+    // - Mahasiswa Terdaftar: Mahasiswa unik yang terdaftar pada kelas-kelas yang diampu oleh Dosen ini
+    const studentIds = new Set();
+    myClasses.forEach(c => {
+      if (Array.isArray(c.enrolledStudents)) {
+        c.enrolledStudents.forEach(id => {
+          if (id) studentIds.add(String(id));
+        });
+      }
+    });
+    displayedMahasiswaCount = studentIds.size;
+
+    // - Dosen Pengampu: Dosen pengampu pada kelas yang diampu (dosen ini / tim pengampu jika ada)
+    const lecturerIds = new Set();
+    myClasses.forEach(c => {
+      const lecturerId = c.dosenId || c.namaDosen || c.dosenNidn;
+      if (lecturerId) lecturerIds.add(String(lecturerId));
+    });
+    displayedDosenCount = lecturerIds.size > 0 ? lecturerIds.size : (myClasses.length > 0 ? 1 : 0);
+  } else if (isMahasiswa) {
+    // 2. Akun Mahasiswa:
+    // - Mahasiswa Terdaftar: Mahasiswa yang terdaftar pada kelas-kelas yang diikuti (rekan mahasiswa satu kelas)
+    const studentIds = new Set();
+    myClasses.forEach(c => {
+      if (Array.isArray(c.enrolledStudents)) {
+        c.enrolledStudents.forEach(id => {
+          if (id) studentIds.add(String(id));
+        });
+      }
+    });
+    displayedMahasiswaCount = studentIds.size;
+
+    // - Dosen Pengampu: Dosen yang mengampu kelas-kelas perkuliahan yang diikuti oleh Mahasiswa ini
+    const lecturerIds = new Set();
+    myClasses.forEach(c => {
+      const lecturerId = c.dosenId || c.namaDosen || c.dosenNidn;
+      if (lecturerId) lecturerIds.add(String(lecturerId));
+    });
+    displayedDosenCount = lecturerIds.size;
+  }
 
   return (
     <div className="space-y-6">
@@ -133,7 +179,7 @@ export default function DashboardPage({ onNavigate }) {
             <GraduationCap className="w-6 h-6" />
           </div>
           <div>
-            <div className="text-xl font-bold text-slate-900">{totalMahasiswa}</div>
+            <div className="text-xl font-bold text-slate-900">{displayedMahasiswaCount}</div>
             <div className="text-xs text-slate-500">Mahasiswa Terdaftar</div>
           </div>
         </div>
@@ -143,7 +189,7 @@ export default function DashboardPage({ onNavigate }) {
             <Users className="w-6 h-6" />
           </div>
           <div>
-            <div className="text-xl font-bold text-slate-900">{totalDosen}</div>
+            <div className="text-xl font-bold text-slate-900">{displayedDosenCount}</div>
             <div className="text-xs text-slate-500">Dosen Pengampu</div>
           </div>
         </div>
