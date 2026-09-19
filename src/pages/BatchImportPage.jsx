@@ -221,7 +221,7 @@ export default function BatchImportPage({ onDone }) {
                   <div key={idx} className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-xs font-mono">
                     <div className="font-bold text-slate-800 mb-0.5">#{idx + 1} {item.name || item.namaMk}</div>
                     <div className="text-[11px] text-slate-500 truncate">
-                      {item.nim ? `NIM: ${item.nim}` : item.kodeMk ? `Kode: ${item.kodeMk} (${item.sks} SKS)` : item.nidn ? `NIDN: ${item.nidn}` : item.email}
+                      {item.nim ? `NIM: ${item.nim}` : item.kodeMk ? `Kode: ${item.kodeMk} (${item.sks} SKS)` : item.nidn ? `NUPTK/NIP: ${item.nidn}` : item.email}
                     </div>
                   </div>
                 ))}

@@ -185,10 +185,10 @@ export default function ProfileModal({ onClose }) {
             </div>
           )}
 
-          {/* Atribut Dosen: NIDN */}
+          {/* Atribut Dosen: NUPTK/NIP */}
           {isDosen && (
             <div>
-              <label className="block font-semibold text-slate-700 mb-1">Nomor Induk Dosen Nasional (NIDN)</label>
+              <label className="block font-semibold text-slate-700 mb-1">NUPTK / NIP Dosen</label>
               <input 
                 type="text"
                 value={form.nidn}

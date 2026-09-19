@@ -716,7 +716,7 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 bg-white"
                 >
                   {dosenList.map(d => (
-                    <option key={d.uid} value={d.uid}>{d.name} ({d.nidn || 'Dosen'})</option>
+                    <option key={d.uid} value={d.uid}>{d.name} ({d.nidn ? `NUPTK/NIP: ${d.nidn}` : 'Dosen'})</option>
                   ))}
                 </select>
               </div>
@@ -870,7 +870,7 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
                 >
                   {dosenList.map(d => (
                     <option key={d.uid} value={d.uid}>
-                      {d.name} {d.nidn ? `(NIDN: ${d.nidn})` : ''}
+                      {d.name} {d.nidn ? `(NUPTK/NIP: ${d.nidn})` : ''}
                     </option>
                   ))}
                 </select>

@@ -43,7 +43,7 @@ export async function loginUser(identifier, password) {
   const rawPass = (password || '').trim();
 
   if (!rawId) {
-    throw new Error("Silakan masukkan Email, Username, NIM, atau NIDN Anda.");
+    throw new Error("Silakan masukkan Email, Username, NIM, atau NUPTK/NIP Anda.");
   }
   if (!rawPass) {
     throw new Error("Silakan masukkan kata sandi akun Anda.");

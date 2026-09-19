@@ -29,7 +29,7 @@ export default function LecturerActivityPage() {
   const handleExportCSV = () => {
     const headers = [
       { key: 'namaDosen', label: 'Nama Dosen' },
-      { key: 'nidn', label: 'NIDN' },
+      { key: 'nidn', label: 'NUPTK/NIP' },
       { key: 'totalKelas', label: 'Total Kelas' },
       { key: 'totalMateri', label: 'Total Materi (x2)' },
       { key: 'totalPresensi', label: 'Total Presensi (x1)' },
@@ -94,7 +94,7 @@ export default function LecturerActivityPage() {
               <tr>
                 <th className="p-3.5">Peringkat</th>
                 <th className="p-3.5">Nama Dosen Pengampu</th>
-                <th className="p-3.5">NIDN</th>
+                <th className="p-3.5">NUPTK/NIP</th>
                 <th className="p-3.5 text-center">Kelas Aktif</th>
                 <th className="p-3.5 text-center">Materi (×2)</th>
                 <th className="p-3.5 text-center">Presensi (×1)</th>

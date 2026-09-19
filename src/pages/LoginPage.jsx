@@ -238,7 +238,7 @@ export default function LoginPage({ onBackToLanding }) {
               <form className="space-y-3.5" onSubmit={handleLoginSubmit}>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Email / NIM / NIDN / Username
+                    Email / NIM / NUPTK/NIP / Username
                   </label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">

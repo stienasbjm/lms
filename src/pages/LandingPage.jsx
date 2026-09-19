@@ -70,7 +70,7 @@ export default function LandingPage({ onGoToLogin }) {
       title: 'Dosen Pengampu OBE',
       email: 'dosen@stienas.ac.id',
       password: 'dosen123',
-      identifierExtra: 'NIDN: 1105087501',
+      identifierExtra: 'NUPTK/NIP: 1105087501',
       description: 'Dr. H. Muhammad Ramli, S.E., M.M. Pengelolaan modul 16 Sub-CPMK, tatap muka daring, presensi, dan penilaian asesmen otentik.',
       features: ['16 Sub-CPMK & Rubrik Otentik', 'Sematkan Link Drive Bahan Ajar', 'Evaluasi Ketercapaian CPMK Mahasiswa']
     },

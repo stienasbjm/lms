@@ -134,7 +134,7 @@ export default function Sidebar({ activeTab, onSelectTab, isOpen = false, onClos
               <span className="text-xs font-semibold text-slate-700">Terkoneksi & Aktif</span>
             </div>
             <div className="text-[11px] text-slate-500 mt-1 font-mono truncate">
-              {user?.nim ? `NIM: ${user.nim}` : user?.nidn ? `NIDN: ${user.nidn}` : user?.email}
+              {user?.nim ? `NIM: ${user.nim}` : user?.nidn ? `NUPTK/NIP: ${user.nidn}` : user?.email}
             </div>
           </div>
 

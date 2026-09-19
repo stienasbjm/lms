@@ -559,7 +559,7 @@ export default function MasterDataPage() {
                 >
                   <option value="">-- Pilih Dosen Pengampu --</option>
                   {dosenList.map(d => (
-                    <option key={d.uid} value={d.uid}>{d.name} ({d.nidn || 'Dosen'})</option>
+                    <option key={d.uid} value={d.uid}>{d.name} ({d.nidn ? `NUPTK/NIP: ${d.nidn}` : 'Dosen'})</option>
                   ))}
                 </select>
               </div>
@@ -751,7 +751,7 @@ export default function MasterDataPage() {
                   <option value="">Belum ditentukan</option>
                   {dosenList.map(d => (
                     <option key={d.uid} value={d.uid}>
-                      {d.name} {d.nidn ? `(NIDN: ${d.nidn})` : ''}
+                      {d.name} {d.nidn ? `(NUPTK/NIP: ${d.nidn})` : ''}
                     </option>
                   ))}
                 </select>

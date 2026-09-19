@@ -393,7 +393,7 @@ export default function UserManagementPage() {
           <div>
             <div className="text-xs text-slate-500 font-medium">Total Dosen Pengampu</div>
             <div className="text-2xl font-black text-blue-800 mt-1">{lecturerCount} Orang</div>
-            <div className="text-[10px] text-slate-400 mt-0.5">Dosen Ber-NIDN Terverifikasi</div>
+            <div className="text-[10px] text-slate-400 mt-0.5">Dosen Ber-NUPTK/NIP Terverifikasi</div>
           </div>
           <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center font-bold">
             <BookOpen className="w-5 h-5" />
@@ -433,7 +433,7 @@ export default function UserManagementPage() {
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
           <input
             type="text"
-            placeholder="Cari nama, NIM, NIDN, atau email..."
+            placeholder="Cari nama, NIM, NUPTK/NIP, atau email..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 text-xs"
@@ -469,7 +469,7 @@ export default function UserManagementPage() {
             <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
               <tr>
                 <th className="p-3.5">Nama & Identitas</th>
-                <th className="p-3.5">NIM / NIDN & Semester</th>
+                <th className="p-3.5">NIM / NUPTK/NIP & Semester</th>
                 <th className="p-3.5">Peran (Role)</th>
                 <th className="p-3.5">Status Akun</th>
                 <th className="p-3.5 text-center">Aksi & Pengelolaan</th>
@@ -523,7 +523,7 @@ export default function UserManagementPage() {
                         ) : u.nidn ? (
                           <div className="space-y-0.5">
                             <span className="bg-blue-50 text-blue-900 px-2 py-0.5 rounded font-mono font-bold border border-blue-200 text-xs">
-                              NIDN: {u.nidn}
+                              NUPTK/NIP: {u.nidn}
                             </span>
                           </div>
                         ) : (
@@ -792,23 +792,23 @@ export default function UserManagementPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <div className="flex justify-between items-center mb-1">
-                        <label className="block font-semibold text-slate-700">NIDN Dosen</label>
+                        <label className="block font-semibold text-slate-700">NUPTK/NIP Dosen</label>
                         <button
                           type="button"
                           onClick={() => setCreateForm(prev => ({ ...prev, nidn: '110508' + Math.floor(1000 + Math.random() * 9000) }))}
                           className="text-[10px] text-blue-600 font-bold hover:underline"
                         >
-                          + Acak NIDN
+                          + Acak NUPTK/NIP
                         </button>
                       </div>
                       <input
                         type="text"
                         placeholder="1105087501"
                         value={createForm.nidn}
-                        onChange={e => setCreateForm({ ...createForm, nidn: e.target.value.replace(/\D/g, '') })}
+                        onChange={e => setCreateForm({ ...createForm, nidn: e.target.value })}
                         className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono font-bold bg-white"
                       />
-                      <p className="text-[10px] text-slate-500 mt-1">Bila kosong, sistem otomatis membuatkan nomor NIDN unik.</p>
+                      <p className="text-[10px] text-slate-500 mt-1">Bila kosong, sistem otomatis membuatkan nomor NUPTK/NIP unik.</p>
                     </div>
                     <div>
                       <label className="block font-semibold text-slate-700 mb-1">Program Studi Homebase</label>
@@ -1059,7 +1059,7 @@ export default function UserManagementPage() {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block font-semibold text-slate-700 mb-1">NIDN Dosen *</label>
+                      <label className="block font-semibold text-slate-700 mb-1">NUPTK/NIP Dosen *</label>
                       <input
                         type="text"
                         required
