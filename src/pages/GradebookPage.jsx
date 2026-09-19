@@ -5,6 +5,7 @@ import {
   updateStudentGrade, 
   getUsers, 
   getTahunAkademik, 
+  getMataKuliah,
   subscribeToDataSync,
   isClassAssignedToLecturer 
 } from '../firebase/firestoreService';
@@ -31,15 +32,18 @@ import {
   User,
   Check,
   AlertCircle,
-  Lock
+  Lock,
+  Calendar
 } from 'lucide-react';
 
-export default function GradebookPage() {
+export default function GradebookPage({ initialClassId }) {
   const { user, isAdmin, isDosen, isMahasiswa } = useAuth();
   const [classes, setClasses] = useState([]);
-  const [selectedClassId, setSelectedClassId] = useState('');
+  const [selectedClassId, setSelectedClassId] = useState(initialClassId || '');
   const [usersList, setUsersList] = useState([]);
   const [tas, setTas] = useState([]);
+  const [mks, setMks] = useState([]);
+  const [selectedSemesterId, setSelectedSemesterId] = useState('');
   const [loading, setLoading] = useState(true);
 
   // Edit Modal State (Dosen / Admin)
@@ -55,18 +59,43 @@ export default function GradebookPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [cls, usrs, tList] = await Promise.all([
+      const [cls, usrs, tList, mList] = await Promise.all([
         getClasses(),
         getUsers(),
-        getTahunAkademik()
+        getTahunAkademik(),
+        getMataKuliah()
       ]);
       setClasses(cls);
       setUsersList(usrs);
       setTas(tList);
+      setMks(mList);
+
+      const activeTa = tList.find(t => t.isActive) || tList[0];
+      const targetSemId = selectedSemesterId || activeTa?.id || 'ALL';
+      if (!selectedSemesterId && activeTa) {
+        setSelectedSemesterId(activeTa.id);
+      }
+
+      // 1. Filter kelas penugasan BAA untuk Dosen
       const available = isDosen 
-        ? cls.filter(c => isClassAssignedToLecturer(c, user))
+        ? cls.filter(c => isClassAssignedToLecturer(c, user, mList))
         : cls;
-      if (available.length > 0 && (!selectedClassId || !available.some(c => c.id === selectedClassId))) {
+
+      // 2. Filter kelas berdasarkan semester
+      const semTarget = tList.find(t => t.id === targetSemId);
+      const semFiltered = targetSemId && targetSemId !== 'ALL'
+        ? available.filter(c => c.tahunAkademikId === targetSemId || (semTarget && c.namaTa === semTarget.namaTa))
+        : available;
+
+      if (initialClassId && available.some(c => c.id === initialClassId)) {
+        setSelectedClassId(initialClassId);
+        const targetC = available.find(c => c.id === initialClassId);
+        if (targetC?.tahunAkademikId) {
+          setSelectedSemesterId(targetC.tahunAkademikId);
+        }
+      } else if (semFiltered.length > 0 && (!selectedClassId || !semFiltered.some(c => c.id === selectedClassId))) {
+        setSelectedClassId(semFiltered[0].id);
+      } else if (semFiltered.length === 0 && available.length > 0 && (!selectedClassId || !available.some(c => c.id === selectedClassId))) {
         setSelectedClassId(available[0].id);
       }
     } catch (err) {
@@ -85,14 +114,43 @@ export default function GradebookPage() {
   }, [user]);
 
   const activeTa = tas.find(t => t.isActive);
-  const displayedClasses = isDosen 
-    ? classes.filter(c => isClassAssignedToLecturer(c, user))
+  const selectedTa = tas.find(t => t.id === selectedSemesterId);
+
+  // Filter kelas Dosen sesuai penugasan BAA
+  const myAssignedClasses = isDosen 
+    ? classes.filter(c => isClassAssignedToLecturer(c, user, mks))
     : classes;
+
+  // Filter kelas sesuai semester yang dipilih
+  const displayedClasses = myAssignedClasses.filter(c => {
+    if (selectedSemesterId && selectedSemesterId !== 'ALL') {
+      return c.tahunAkademikId === selectedSemesterId || (selectedTa && c.namaTa === selectedTa.namaTa);
+    }
+    return true;
+  });
+
   const selectedClass = displayedClasses.find(c => c.id === selectedClassId) || displayedClasses[0];
   const selectedClassTa = tas.find(t => t.id === selectedClass?.tahunAkademikId || t.namaTa === selectedClass?.namaTa);
   const isClassTaActive = selectedClassTa ? selectedClassTa.isActive : false;
-  const isDosenOfClass = isDosen && isClassAssignedToLecturer(selectedClass, user);
+  const isDosenOfClass = isDosen && isClassAssignedToLecturer(selectedClass, user, mks);
   const canEditGrades = isAdmin ? true : (isDosenOfClass && isClassTaActive);
+
+  // Handler ganti semester
+  const handleSemesterChange = (newSemId) => {
+    setSelectedSemesterId(newSemId);
+    const targetSem = tas.find(t => t.id === newSemId);
+    const classesInSem = myAssignedClasses.filter(c => {
+      if (newSemId && newSemId !== 'ALL') {
+        return c.tahunAkademikId === newSemId || (targetSem && c.namaTa === targetSem.namaTa);
+      }
+      return true;
+    });
+    if (classesInSem.length > 0) {
+      setSelectedClassId(classesInSem[0].id);
+    } else {
+      setSelectedClassId('');
+    }
+  };
 
   const handleOpenEdit = (mhsId, existingGrade) => {
     if (!canEditGrades) {
@@ -611,18 +669,47 @@ export default function GradebookPage() {
         </div>
       </div>
 
+      {/* Selektor Semester BAA (Tahun Akademik) & Sinkronisasi Penugasan Dosen */}
+      <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-xs">
+        <div className="flex items-center gap-2">
+          <Calendar className="w-4 h-4 text-brand-700 shrink-0" />
+          <span className="font-semibold text-slate-700">Tahun Akademik / Semester BAA:</span>
+          <select
+            value={selectedSemesterId}
+            onChange={e => handleSemesterChange(e.target.value)}
+            className="px-3 py-1.5 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 font-bold bg-white text-slate-800"
+          >
+            <option value="ALL">Semua Semester ({tas.length} Periode)</option>
+            {tas.map(ta => (
+              <option key={ta.id} value={ta.id}>
+                {ta.namaTa} {ta.isActive ? '• [DIBUKA / Semester Berjalan]' : '• [DITUTUP / Arsip]'}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Indikator Lencana Penugasan BAA */}
+        {isDosen && (
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 border border-blue-200 text-xs font-bold text-blue-900 shadow-sm">
+            <BookOpen className="w-4 h-4 text-blue-700" />
+            <span>Kelas Penugasan BAA: {displayedClasses.length} Kelas</span>
+          </div>
+        )}
+      </div>
+
       {/* Class Selector Bar (Khusus Dosen / Admin) */}
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row justify-between items-center gap-4 text-xs">
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
           <BookOpen className="w-4 h-4 text-brand-700" />
           <span className="font-semibold text-slate-700">Pilih Kelas Kuliah:</span>
           <select
             value={selectedClassId}
             onChange={e => setSelectedClassId(e.target.value)}
-            className="px-3 py-1.5 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 bg-white font-semibold text-brand-900"
+            disabled={displayedClasses.length === 0}
+            className="px-3 py-1.5 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 bg-white font-semibold text-brand-900 min-w-[280px]"
           >
             {displayedClasses.length === 0 ? (
-              <option value="">(Belum ada kelas yang didaftarkan BAA)</option>
+              <option value="">(Belum ada kelas yang didaftarkan BAA pada semester ini)</option>
             ) : (
               displayedClasses.map(c => {
                 const cTa = tas.find(t => t.id === c.tahunAkademikId || t.namaTa === c.namaTa);
@@ -641,13 +728,30 @@ export default function GradebookPage() {
           {selectedClass ? (
             <>Dosen: <strong className="text-slate-800">{selectedClass.namaDosen}</strong> • {selectedClass.sks} SKS • <span className="text-brand-700 font-bold">16 Sesi RPS OBE</span></>
           ) : (
-            <span className="text-amber-700 font-medium">Belum ada kelas penugasan BAA untuk akun Anda</span>
+            <span className="text-amber-700 font-medium">Belum ada kelas penugasan BAA untuk semester ini</span>
           )}
         </div>
       </div>
 
+      {/* Banner jika belum ada kelas penugasan BAA untuk semester ini */}
+      {displayedClasses.length === 0 && (
+        <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center shadow-sm">
+          <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-3">
+            <BookOpen className="w-6 h-6" />
+          </div>
+          <h3 className="font-bold text-slate-800 text-sm mb-1">
+            Belum Ada Kelas Penugasan BAA
+          </h3>
+          <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
+            {isDosen
+              ? `Belum ada kelas perkuliahan yang didaftarkan atau ditugaskan oleh Bagian Administrasi Akademik (BAA) kepada akun Anda untuk periode ${selectedTa ? selectedTa.namaTa : 'semester ini'}. Silakan berkoordinasi dengan BAA untuk penjadwalan mengajar dan pembukaan buku nilai.`
+              : `Belum ada kelas perkuliahan yang dijadwalkan oleh Bagian Akademik (BAA) untuk periode ${selectedTa ? selectedTa.namaTa : 'semester ini'}.`}
+          </p>
+        </div>
+      )}
+
       {/* Peringatan jika semester kelas ini ditutup oleh BAA */}
-      {!isClassTaActive && (
+      {selectedClass && !isClassTaActive && (
         <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-center gap-3 text-xs text-rose-800 shadow-sm animate-in fade-in">
           <Lock className="w-5 h-5 text-rose-600 shrink-0" />
           <div>
@@ -658,7 +762,9 @@ export default function GradebookPage() {
       )}
 
       {/* OBE Assessment Rubric & CPMK Alignment Card */}
-      <div className="p-4 bg-slate-900 text-white rounded-2xl border border-slate-800 space-y-3">
+      {selectedClass && (
+        <>
+          <div className="p-4 bg-slate-900 text-white rounded-2xl border border-slate-800 space-y-3">
         <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2 text-xs">
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gold-400/20 text-gold-300 border border-gold-400/30 uppercase">
@@ -805,6 +911,8 @@ export default function GradebookPage() {
           </table>
         </div>
       </div>
+        </>
+      )}
 
       {/* Modal Input Nilai Mahasiswa Berstandar OBE */}
       {editingStudent && (

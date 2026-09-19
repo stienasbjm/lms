@@ -55,6 +55,7 @@ function MainApp() {
       return (
         <ClassListPage 
           onSelectClass={(classId) => setSelectedClassId(classId)} 
+          onNavigate={handleNavigate}
         />
       );
     }
@@ -63,7 +64,7 @@ function MainApp() {
       case 'dashboard':
         return <DashboardPage onNavigate={handleNavigate} />;
       case 'gradebook':
-        return <GradebookPage />;
+        return <GradebookPage initialClassId={selectedClassId} />;
       case 'master-data':
         return (isAdmin || isBaa || isSuperAdmin) ? <MasterDataPage /> : <DashboardPage onNavigate={handleNavigate} />;
       case 'users':

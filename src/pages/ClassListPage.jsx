@@ -31,10 +31,11 @@ import {
   AlertCircle,
   Edit3,
   Trash2,
-  Settings
+  Settings,
+  Award
 } from 'lucide-react';
 
-export default function ClassListPage({ onSelectClass }) {
+export default function ClassListPage({ onSelectClass, onNavigate }) {
   const { user, isAdmin, isDosen, isMahasiswa } = useAuth();
   const [classes, setClasses] = useState([]);
   const [mks, setMks] = useState([]);
@@ -103,7 +104,7 @@ export default function ClassListPage({ onSelectClass }) {
           ...prev,
           mataKuliahId: m[0].id,
           tahunAkademikId: activeTa?.id || t[0]?.id || '',
-          dosenId: dosens[0]?.uid || ''
+          dosenId: m[0].dosenId || dosens[0]?.uid || ''
         }));
       }
     } catch (err) {
@@ -270,7 +271,7 @@ export default function ClassListPage({ onSelectClass }) {
 
     // 2. KETENTUAN KHUSUS DOSEN: HANYA TAMPILKAN KELAS YANG DIDAFTARKAN/DITUGASKAN OLEH BAA
     if (isDosen) {
-      if (!isClassAssignedToLecturer(cls, user)) return false;
+      if (!isClassAssignedToLecturer(cls, user, mks)) return false;
     }
 
     // 3. Sub-filter Mahasiswa
@@ -286,7 +287,7 @@ export default function ClassListPage({ onSelectClass }) {
   const totalClassesInSemester = classes.filter(c => 
     selectedSemesterId === 'ALL' || c.tahunAkademikId === selectedSemesterId || c.namaTa === selectedTa?.namaTa
   );
-  const myDosenClassesCount = totalClassesInSemester.filter(c => isClassAssignedToLecturer(c, user)).length;
+  const myDosenClassesCount = totalClassesInSemester.filter(c => isClassAssignedToLecturer(c, user, mks)).length;
   const myEnrolledClassesCount = totalClassesInSemester.filter(c => (c.enrolledStudents || []).includes(user?.uid)).length;
 
   return (
@@ -479,7 +480,7 @@ export default function ClassListPage({ onSelectClass }) {
           {filteredClasses.map(cls => {
             const isEnrolled = (cls.enrolledStudents || []).includes(user?.uid);
             const isFull = (cls.enrolledStudents || []).length >= (cls.kuota || 40);
-            const isLecturer = isDosen && isClassAssignedToLecturer(cls, user);
+            const isLecturer = isDosen && isClassAssignedToLecturer(cls, user, mks);
             const classTa = tas.find(t => t.id === cls.tahunAkademikId || t.namaTa === cls.namaTa);
             const isClassSemesterActive = classTa ? classTa.isActive : false;
 
@@ -603,6 +604,26 @@ export default function ClassListPage({ onSelectClass }) {
                       <UserPlus className="w-4 h-4" />
                       {isFull ? 'Kuota Penuh' : 'Daftar Kelas Ini'}
                     </button>
+                  ) : isDosen ? (
+                    <div className="w-full flex items-center gap-2">
+                      <button
+                        onClick={() => onSelectClass(cls.id)}
+                        className="flex-1 py-1.5 bg-white border border-brand-300 hover:bg-brand-50 text-brand-800 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-colors shadow-sm"
+                      >
+                        <span>Masuk Kelas</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                      {onNavigate && (
+                        <button
+                          onClick={() => onNavigate('gradebook', { selectedClassId: cls.id })}
+                          title="Isi Penilaian OBE (Gradebook)"
+                          className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors shadow-sm shrink-0"
+                        >
+                          <Award className="w-3.5 h-3.5 text-emerald-700" />
+                          <span>Nilai OBE</span>
+                        </button>
+                      )}
+                    </div>
                   ) : (
                     <button
                       onClick={() => onSelectClass(cls.id)}
@@ -640,7 +661,15 @@ export default function ClassListPage({ onSelectClass }) {
                 <label className="block text-slate-700 font-semibold mb-1">Mata Kuliah Kurikulum</label>
                 <select
                   value={formData.mataKuliahId}
-                  onChange={e => setFormData({...formData, mataKuliahId: e.target.value})}
+                  onChange={e => {
+                    const mkId = e.target.value;
+                    const matchedMk = mks.find(m => m.id === mkId);
+                    setFormData({
+                      ...formData, 
+                      mataKuliahId: mkId,
+                      dosenId: matchedMk?.dosenId || formData.dosenId
+                    });
+                  }}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 bg-white"
                 >
                   {mks.map(m => (
@@ -785,7 +814,15 @@ export default function ClassListPage({ onSelectClass }) {
                 <label className="block text-slate-700 font-semibold mb-1">Mata Kuliah</label>
                 <select
                   value={editFormData.mataKuliahId}
-                  onChange={e => setEditFormData({...editFormData, mataKuliahId: e.target.value})}
+                  onChange={e => {
+                    const mkId = e.target.value;
+                    const matchedMk = mks.find(m => m.id === mkId);
+                    setEditFormData({
+                      ...editFormData, 
+                      mataKuliahId: mkId,
+                      dosenId: matchedMk?.dosenId || editFormData.dosenId
+                    });
+                  }}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 bg-white"
                 >
                   {mks.map(m => (

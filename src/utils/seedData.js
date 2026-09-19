@@ -414,6 +414,50 @@ export const INITIAL_CLASSES = [
         nilaiHuruf: 'A'
       }
     }
+  },
+  {
+    id: 'kelas-sim-401-a',
+    mataKuliahId: 'mk-sim-401',
+    namaMk: 'Sistem Informasi Manajemen',
+    kodeMk: 'SIM401',
+    sks: 3,
+    tahunAkademikId: 'ta-20261',
+    namaTa: '2026/2027 Ganjil',
+    dosenId: 'user-dosen-1',
+    namaDosen: 'Dr. H. Muhammad Ramli, S.E., M.M.',
+    namaKelas: 'A',
+    ruang: 'Lab Komputer 301',
+    hari: 'Jumat',
+    jam: '08:30 - 11:00 WITA',
+    kuota: 35,
+    status: 'OPEN',
+    progressPercentage: 20,
+    enrolledStudents: ['user-mhs-1', 'user-mhs-2', 'user-mhs-3'],
+    meetings: generateDefault16Meetings('Sistem Informasi Manajemen'),
+    grades: {
+      'user-mhs-1': {
+        mhsId: 'user-mhs-1',
+        nama: 'Ahmad Fadillah',
+        nim: '221011001',
+        nilaiTugas: 82,
+        nilaiKuis: 80,
+        nilaiUts: 85,
+        nilaiUas: 88,
+        nilaiAkhir: 84.1,
+        nilaiHuruf: 'A-'
+      },
+      'user-mhs-2': {
+        mhsId: 'user-mhs-2',
+        nama: 'Nurul Hidayah',
+        nim: '221011002',
+        nilaiTugas: 78,
+        nilaiKuis: 82,
+        nilaiUts: 76,
+        nilaiUas: 80,
+        nilaiAkhir: 78.8,
+        nilaiHuruf: 'B+'
+      }
+    }
   }
 ];
 

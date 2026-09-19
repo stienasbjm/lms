@@ -212,9 +212,12 @@ export async function initializeLocalStore() {
   await getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
   await getLocal(STORAGE_KEYS.MK, INITIAL_MK);
   
-  // Bersihkan materi dummy lama yang memiliki raw.githubusercontent.com
+  // Bersihkan materi dummy lama yang memiliki raw.githubusercontent.com dan sertakan kelas baru jika ada
   const existingClasses = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
-  const cleanedClasses = existingClasses.map(cls => ({
+  const missingInitial = INITIAL_CLASSES.filter(ic => !existingClasses.some(ec => ec.id === ic.id));
+  const combinedClasses = missingInitial.length > 0 ? [...existingClasses, ...missingInitial] : existingClasses;
+
+  const cleanedClasses = combinedClasses.map(cls => ({
     ...cls,
     meetings: (cls.meetings || []).map(m => ({
       ...m,
@@ -387,6 +390,36 @@ export async function updateMataKuliah(mkId, updatedData, user) {
     return item;
   });
   await setLocal(STORAGE_KEYS.MK, updated);
+
+  // Jika BAA memperbarui penugasan Dosen pada Mata Kuliah, sinkronkan ke seluruh kelas perkuliahan terkait
+  if (updatedData.dosenId) {
+    try {
+      const [users, currentClasses] = await Promise.all([
+        getLocal(STORAGE_KEYS.USERS, INITIAL_USERS),
+        getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES)
+      ]);
+      const targetDosen = users.find(u => u.uid === updatedData.dosenId || u.id === updatedData.dosenId);
+      if (targetDosen) {
+        const syncedClasses = currentClasses.map(c => {
+          if (c.mataKuliahId === mkId || c.kodeMk === updatedData.kodeMk) {
+            return {
+              ...c,
+              dosenId: targetDosen.uid || targetDosen.id,
+              namaDosen: targetDosen.name || c.namaDosen,
+              dosenNidn: targetDosen.nidn || c.dosenNidn || '',
+              dosenEmail: targetDosen.email || c.dosenEmail || ''
+            };
+          }
+          return c;
+        });
+        await setLocal(STORAGE_KEYS.CLASSES, syncedClasses);
+        notifyDataChange(STORAGE_KEYS.CLASSES, syncedClasses);
+      }
+    } catch (syncErr) {
+      console.warn("Gagal sinkronisasi kelas dari update mata kuliah:", syncErr);
+    }
+  }
+
   await logAudit(user, 'UPDATE_MK', `Memperbarui Mata Kuliah ${updatedData.kodeMk || ''} - ${updatedData.namaMk || ''}`);
   return updated;
 }
@@ -710,7 +743,7 @@ export async function batchImportData(type, items, user) {
 /**
  * Helper untuk memvalidasi apakah suatu kelas perkuliahan ditugaskan kepada Dosen tertentu oleh BAA
  */
-export function isClassAssignedToLecturer(cls, lecturer) {
+export function isClassAssignedToLecturer(cls, lecturer, mks = []) {
   if (!cls || !lecturer) return false;
   const lecturerUid = lecturer.uid ? String(lecturer.uid).trim() : '';
   const lecturerId = lecturer.id ? String(lecturer.id).trim() : '';
@@ -723,14 +756,30 @@ export function isClassAssignedToLecturer(cls, lecturer) {
   const classDosenEmail = cls.dosenEmail ? String(cls.dosenEmail).trim().toLowerCase() : '';
   const classDosenName = cls.namaDosen ? String(cls.namaDosen).trim().toLowerCase() : '';
 
-  // 1. Cocokkan berdasarkan UID atau ID akun
+  // 1. Cocokkan langsung berdasarkan data pengajar di kelas
   if (classDosenId && (classDosenId === lecturerUid || classDosenId === lecturerId)) return true;
-  // 2. Cocokkan berdasarkan NIDN jika tersedia
   if (lecturerNidn && (classDosenId === lecturerNidn || classDosenNidn === lecturerNidn)) return true;
-  // 3. Cocokkan berdasarkan email
   if (lecturerEmail && (classDosenId === lecturerEmail || classDosenEmail === lecturerEmail)) return true;
-  // 4. Cocokkan berdasarkan nama dosen pengampu
   if (classDosenName && lecturerName && classDosenName === lecturerName) return true;
+
+  // 2. Cocokkan berdasarkan penugasan Mata Kuliah oleh BAA di Master Data Kurikulum
+  if (Array.isArray(mks) && mks.length > 0) {
+    const matchedMk = mks.find(m => 
+      (cls.mataKuliahId && m.id === cls.mataKuliahId) || 
+      (cls.kodeMk && m.kodeMk === cls.kodeMk)
+    );
+    if (matchedMk) {
+      const mkDosenId = matchedMk.dosenId ? String(matchedMk.dosenId).trim() : '';
+      const mkDosenNidn = matchedMk.dosenNidn ? String(matchedMk.dosenNidn).trim() : '';
+      const mkDosenEmail = matchedMk.dosenEmail ? String(matchedMk.dosenEmail).trim().toLowerCase() : '';
+      const mkDosenName = matchedMk.namaDosen ? String(matchedMk.namaDosen).trim().toLowerCase() : '';
+
+      if (mkDosenId && (mkDosenId === lecturerUid || mkDosenId === lecturerId)) return true;
+      if (lecturerNidn && (mkDosenId === lecturerNidn || mkDosenNidn === lecturerNidn)) return true;
+      if (lecturerEmail && (mkDosenId === lecturerEmail || mkDosenEmail === lecturerEmail)) return true;
+      if (mkDosenName && lecturerName && mkDosenName === lecturerName) return true;
+    }
+  }
 
   return false;
 }
