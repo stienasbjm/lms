@@ -41,6 +41,10 @@ export default function MasterDataPage() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // Filter Mata Kuliah Kurikulum
+  const [mkSemesterFilter, setMkSemesterFilter] = useState('ALL');
+  const [mkProdiFilter, setMkProdiFilter] = useState('ALL');
+
   // Form Tambah Mata Kuliah
   const [showAddMkModal, setShowAddMkModal] = useState(false);
   const [newMk, setNewMk] = useState({
@@ -109,15 +113,19 @@ export default function MasterDataPage() {
     const confirmed = await showConfirmDialog({
       title: 'Hapus Semester?',
       text: `Hapus semester "${taName}"? Seluruh kelas perkuliahan terkait akan tetap tersimpan di arsip.`,
-      confirmButtonText: 'Ya, Hapus Semester'
+      confirmButtonText: 'Ya, Hapus Semester',
+      confirmButtonColor: '#dc2626'
     });
     if (!confirmed) return;
 
     try {
+      setTas(prev => prev.filter(t => String(t.id) !== String(taId)));
       const updated = await deleteTahunAkademik(taId, user);
       setTas(updated);
       showSuccessToast(`Semester "${taName}" berhasil dihapus.`);
+      await loadAll();
     } catch (err) {
+      await loadAll();
       showErrorAlert("Gagal Menghapus Semester", err.message);
     }
   };
@@ -151,15 +159,18 @@ export default function MasterDataPage() {
     const confirmed = await showConfirmDialog({
       title: 'Hapus Mata Kuliah?',
       text: `Hapus kurikulum mata kuliah "${mkName}" dari master kurikulum?`,
-      confirmButtonText: 'Ya, Hapus MK'
+      confirmButtonText: 'Ya, Hapus MK',
+      confirmButtonColor: '#dc2626'
     });
     if (!confirmed) return;
 
     try {
+      setMks(prev => prev.filter(m => String(m.id) !== String(mkId)));
       await deleteMataKuliah(mkId, user);
-      await loadAll();
       showSuccessToast(`Mata kuliah "${mkName}" berhasil dihapus.`);
+      await loadAll();
     } catch (err) {
+      await loadAll();
       showErrorAlert("Gagal Menghapus Mata Kuliah", err.message);
     }
   };
@@ -283,15 +294,35 @@ export default function MasterDataPage() {
 
       {/* TAB 1: MATA KULIAH */}
       {activeTab === 'mk' && (
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-          <div className="p-3.5 bg-brand-50 border-b border-brand-200 flex justify-between items-center text-xs">
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm space-y-0">
+          <div className="p-3.5 bg-brand-50 border-b border-brand-200 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
             <span className="font-bold text-brand-900 flex items-center gap-1.5">
               <Sparkles className="w-4 h-4 text-amber-600" />
               Kurikulum OBE (Outcome-Based Education) • Standar Akreditasi LAMEMBA 2026/2027
             </span>
-            <span className="text-[11px] text-brand-700 font-medium">
-              Total {mks.length} Mata Kuliah Terpetakan CPL & CPMK
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={mkSemesterFilter}
+                onChange={e => setMkSemesterFilter(e.target.value)}
+                className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 outline-none"
+              >
+                <option value="ALL">Semua Semester ({mks.length})</option>
+                {[1, 2, 3, 4, 5, 6, 7, 8].map(sem => (
+                  <option key={sem} value={sem}>Semester {sem} ({mks.filter(m => Number(m.semesterDefault) === sem).length} MK)</option>
+                ))}
+              </select>
+
+              <select
+                value={mkProdiFilter}
+                onChange={e => setMkProdiFilter(e.target.value)}
+                className="px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 outline-none"
+              >
+                <option value="ALL">Semua Prodi</option>
+                {prodis.map(p => (
+                  <option key={p.id} value={p.id}>{p.namaProdi}</option>
+                ))}
+              </select>
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
@@ -300,7 +331,7 @@ export default function MasterDataPage() {
                   <th className="p-3.5">Kode MK</th>
                   <th className="p-3.5">Nama Mata Kuliah</th>
                   <th className="p-3.5">SKS</th>
-                  <th className="p-3.5">Semester</th>
+                  <th className="p-3.5">Semester Kurikulum</th>
                   <th className="p-3.5">Program Studi</th>
                   <th className="p-3.5">Standar Kurikulum OBE</th>
                   <th className="p-3.5">Dosen Penanggung Jawab</th>
@@ -308,7 +339,11 @@ export default function MasterDataPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {mks.map(mk => {
+                {mks.filter(m => {
+                  if (mkSemesterFilter !== 'ALL' && String(m.semesterDefault) !== String(mkSemesterFilter)) return false;
+                  if (mkProdiFilter !== 'ALL' && m.prodiId !== mkProdiFilter) return false;
+                  return true;
+                }).map(mk => {
                   const prodi = prodis.find(p => p.id === mk.prodiId);
                   const dosen = users.find(u => u.uid === mk.dosenId);
                   const cplCount = (mk.cpl || []).length;

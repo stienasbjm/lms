@@ -134,6 +134,51 @@ export const INITIAL_USERS = [
 
 export const INITIAL_MK = [
   {
+    id: 'mk-mnj-101',
+    kodeMk: 'MNJ101',
+    namaMk: 'Pengantar Manajemen',
+    sks: 3,
+    semesterDefault: 1,
+    prodiId: 'prodi-s1-manajemen',
+    dosenId: 'user-dosen-2',
+    kurikulum: 'Kurikulum OBE (Outcome-Based Education)',
+    cpl: ['CPL-1 (Kepemimpinan & Etika Organisasi)', 'CPL-2 (Prinsip Dasar Manajemen Bisnis)'],
+    cpmk: [
+      'CPMK-1: Memahami fungsi fundamental manajemen POAC (Planning, Organizing, Actuating, Controlling)',
+      'CPMK-2: Mampu menganalisis dinamika lingkungan bisnis dan pengambilan keputusan manajerial'
+    ]
+  },
+  {
+    id: 'mk-bis-101',
+    kodeMk: 'BIS101',
+    namaMk: 'Pengantar Bisnis & Kewirausahaan',
+    sks: 3,
+    semesterDefault: 1,
+    prodiId: 'prodi-s1-manajemen',
+    dosenId: 'user-dosen-1',
+    kurikulum: 'Kurikulum OBE (Outcome-Based Education)',
+    cpl: ['CPL-1 (Etika Bisnis)', 'CPL-3 (Inovasi & Model Bisnis)'],
+    cpmk: [
+      'CPMK-1: Menguasai ekosistem bisnis modern, kepemilikan usaha, dan tanggung jawab sosial',
+      'CPMK-2: Mampu menyusun Business Model Canvas (BMC) untuk ide rintisan usaha baru'
+    ]
+  },
+  {
+    id: 'mk-akt-101',
+    kodeMk: 'AKT101',
+    namaMk: 'Pengantar Akuntansi I',
+    sks: 3,
+    semesterDefault: 1,
+    prodiId: 'prodi-s1-akuntansi',
+    dosenId: 'user-dosen-1',
+    kurikulum: 'Kurikulum OBE (Outcome-Based Education)',
+    cpl: ['CPL-1 (Integritas Profesi Akuntan)', 'CPL-2 (Siklus Akuntansi Dasar SAK)'],
+    cpmk: [
+      'CPMK-1: Mampu mencatat jurnal transaksi keuangan dan buku besar perusahaan jasa dan dagang',
+      'CPMK-2: Mampu menyusun laporan keuangan neraca saldo dan kertas kerja penyesuaian'
+    ]
+  },
+  {
     id: 'mk-mnj-301',
     kodeMk: 'MNJ301',
     namaMk: 'Manajemen Keuangan I',
@@ -261,6 +306,69 @@ export function generateDefault16Meetings(namaMk = 'Mata Kuliah') {
 }
 
 export const INITIAL_CLASSES = [
+  {
+    id: 'kelas-mnj-101-a',
+    mataKuliahId: 'mk-mnj-101',
+    namaMk: 'Pengantar Manajemen',
+    kodeMk: 'MNJ101',
+    sks: 3,
+    tahunAkademikId: 'ta-20261',
+    namaTa: '2026/2027 Ganjil',
+    dosenId: 'user-dosen-2',
+    namaDosen: 'Dra. Hj. Siti Rahmah, M.Si.',
+    namaKelas: 'A',
+    ruang: 'Ruang Teori 101',
+    hari: 'Senin',
+    jam: '08:00 - 10:30 WITA',
+    kuota: 40,
+    status: 'OPEN',
+    progressPercentage: 10,
+    enrolledStudents: ['user-mhs-4'],
+    meetings: generateDefault16Meetings('Pengantar Manajemen'),
+    grades: {}
+  },
+  {
+    id: 'kelas-bis-101-a',
+    mataKuliahId: 'mk-bis-101',
+    namaMk: 'Pengantar Bisnis & Kewirausahaan',
+    kodeMk: 'BIS101',
+    sks: 3,
+    tahunAkademikId: 'ta-20261',
+    namaTa: '2026/2027 Ganjil',
+    dosenId: 'user-dosen-1',
+    namaDosen: 'Dr. H. Muhammad Ramli, S.E., M.M.',
+    namaKelas: 'A',
+    ruang: 'Ruang Teori 102',
+    hari: 'Selasa',
+    jam: '10:45 - 13:15 WITA',
+    kuota: 40,
+    status: 'OPEN',
+    progressPercentage: 0,
+    enrolledStudents: [],
+    meetings: generateDefault16Meetings('Pengantar Bisnis & Kewirausahaan'),
+    grades: {}
+  },
+  {
+    id: 'kelas-akt-101-a',
+    mataKuliahId: 'mk-akt-101',
+    namaMk: 'Pengantar Akuntansi I',
+    kodeMk: 'AKT101',
+    sks: 3,
+    tahunAkademikId: 'ta-20261',
+    namaTa: '2026/2027 Ganjil',
+    dosenId: 'user-dosen-1',
+    namaDosen: 'Dr. H. Muhammad Ramli, S.E., M.M.',
+    namaKelas: 'A',
+    ruang: 'Ruang Teori 103',
+    hari: 'Rabu',
+    jam: '08:00 - 10:30 WITA',
+    kuota: 35,
+    status: 'OPEN',
+    progressPercentage: 0,
+    enrolledStudents: [],
+    meetings: generateDefault16Meetings('Pengantar Akuntansi I'),
+    grades: {}
+  },
   {
     id: 'kelas-mnj-301-a',
     mataKuliahId: 'mk-mnj-301',

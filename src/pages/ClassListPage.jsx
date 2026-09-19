@@ -47,7 +47,7 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
   const [selectedSemesterId, setSelectedSemesterId] = useState('');
   // Sub-filter untuk Dosen & Mahasiswa
   const [filterDosenScope, setFilterDosenScope] = useState('ALL'); // 'ALL' | 'MY_CLASSES'
-  const [filterMhsScope, setFilterMhsScope] = useState('ENROLLED'); // 'ENROLLED' | 'ALL'
+  const [filterMhsScope, setFilterMhsScope] = useState('MY_SEMESTER'); // 'MY_SEMESTER' | 'ENROLLED' | 'ALL'
 
   // Modal Buka Kelas Baru (Khusus Admin BAA)
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -217,23 +217,32 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
   const handleDeleteClass = async (cls, e) => {
     e?.stopPropagation?.();
     if (!isAdmin) {
-      showErrorAlert("Akses Ditolak", "Hanya Admin dan BAA yang memiliki wewenang menghapus kelas.");
+      showErrorAlert("Akses Ditolak", "Hanya Admin dan Bagian Akademik (BAA) yang memiliki wewenang menghapus kelas.");
+      return;
+    }
+
+    const classId = cls?.id || cls?.uid;
+    if (!classId) {
+      showErrorAlert("Gagal Menghapus Kelas", "ID kelas perkuliahan tidak ditemukan.");
       return;
     }
 
     const confirmed = await showConfirmDialog({
       title: 'Hapus Kelas Perkuliahan?',
-      text: `Apakah Anda yakin ingin menghapus kelas "${cls.namaMk} (Kelas ${cls.namaKelas})"? Seluruh data modul pertemuan, presensi, dan nilai di kelas ini akan dihapus secara permanen.`,
+      text: `Apakah Anda yakin ingin menghapus kelas "${cls.namaMk || 'Mata Kuliah'} (Kelas ${cls.namaKelas || '-'})"? Seluruh data modul pertemuan, presensi, dan nilai di kelas ini akan dihapus secara permanen.`,
       confirmButtonText: 'Ya, Hapus Kelas',
       confirmButtonColor: '#dc2626'
     });
 
     if (confirmed) {
       try {
-        await deleteClass(cls.id, user);
+        // Optimistic UI update agar kelas langsung hilang seketika
+        setClasses(prev => prev.filter(c => String(c.id) !== String(classId) && String(c.uid || '') !== String(classId)));
+        await deleteClass(classId, user);
         showSuccessToast(`Kelas ${cls.namaMk} (${cls.namaKelas}) berhasil dihapus.`);
         await loadData();
       } catch (err) {
+        await loadData(); // Kembalikan data jika terjadi kegagalan
         showErrorAlert("Gagal Menghapus Kelas", err.message);
       }
     }
@@ -247,9 +256,19 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
       return;
     }
 
+    const mk = mks.find(m => m.id === targetClass?.mataKuliahId || m.kodeMk === targetClass?.kodeMk);
+    const courseSemester = Number(mk?.semesterDefault || 1);
+    if (studentCurrentSemester && studentCurrentSemester < courseSemester) {
+      showErrorAlert(
+        "KRS Ditolak (Belum Mencapai Semester)",
+        `Mata kuliah "${targetClass?.namaMk}" dialokasikan untuk Semester ${courseSemester}. Anda saat ini berada di Semester ${studentCurrentSemester} (Angkatan ${user?.angkatan || '-'}).`
+      );
+      return;
+    }
+
     try {
       await enrollStudent(classId, user.uid, user);
-      showSuccessToast("Berhasil mendaftar ke kelas perkuliahan!");
+      showSuccessToast(`Berhasil mengambil kelas ${targetClass?.namaMk} (KRS)!`);
       await loadData();
     } catch (err) {
       showErrorAlert("Gagal Mendaftar", err.message);
@@ -259,6 +278,13 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
   // Helper Semester Aktif
   const activeTa = tas.find(t => t.isActive);
   const selectedTa = tas.find(t => t.id === selectedSemesterId);
+
+  // Hitung semester berjalan mahasiswa berdasarkan angkatan atau field semester
+  const studentCurrentSemester = isMahasiswa ? (
+    user?.semester ? Number(user.semester) : (
+      user?.angkatan ? Math.max(1, ((2026 - Number(user.angkatan)) * 2) + 1) : 1
+    )
+  ) : null;
 
   // Filter Kelas berdasarkan Semester dan Peran
   const filteredClasses = classes.filter(cls => {
@@ -274,21 +300,34 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
       if (!isClassAssignedToLecturer(cls, user, mks)) return false;
     }
 
-    // 3. Sub-filter Mahasiswa
-    if (isMahasiswa && filterMhsScope === 'ENROLLED') {
-      const isEnrolled = (cls.enrolledStudents || []).includes(user?.uid);
-      if (!isEnrolled) return false;
+    // 3. Sub-filter Mahasiswa (OBE KRS Rule)
+    if (isMahasiswa) {
+      if (filterMhsScope === 'MY_SEMESTER') {
+        const mk = mks.find(m => m.id === cls.mataKuliahId || m.kodeMk === cls.kodeMk);
+        const sem = Number(mk?.semesterDefault || 1);
+        const isProdiMatch = !mk?.prodiId || !user?.prodiId || mk.prodiId === user.prodiId;
+        if (sem !== studentCurrentSemester || !isProdiMatch) return false;
+      } else if (filterMhsScope === 'ENROLLED') {
+        const isEnrolled = (cls.enrolledStudents || []).includes(user?.uid);
+        if (!isEnrolled) return false;
+      }
     }
 
     return true;
   });
 
-  // Hitungan untuk tab Dosen
+  // Hitungan untuk tab Dosen & Mahasiswa
   const totalClassesInSemester = classes.filter(c => 
     selectedSemesterId === 'ALL' || c.tahunAkademikId === selectedSemesterId || c.namaTa === selectedTa?.namaTa
   );
   const myDosenClassesCount = totalClassesInSemester.filter(c => isClassAssignedToLecturer(c, user, mks)).length;
   const myEnrolledClassesCount = totalClassesInSemester.filter(c => (c.enrolledStudents || []).includes(user?.uid)).length;
+  const mySemesterClassesCount = totalClassesInSemester.filter(c => {
+    const mk = mks.find(m => m.id === c.mataKuliahId || m.kodeMk === c.kodeMk);
+    const sem = Number(mk?.semesterDefault || 1);
+    const isProdiMatch = !mk?.prodiId || !user?.prodiId || mk.prodiId === user.prodiId;
+    return sem === studentCurrentSemester && isProdiMatch;
+  }).length;
 
   return (
     <div className="space-y-6">
@@ -406,14 +445,22 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
 
           {/* Sub-Filter Khusus Mahasiswa */}
           {isMahasiswa && (
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
+            <div className="flex flex-wrap items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
+              <button
+                onClick={() => setFilterMhsScope('MY_SEMESTER')}
+                className={`px-3 py-1 rounded-lg font-medium transition-all ${
+                  filterMhsScope === 'MY_SEMESTER' ? 'bg-white shadow text-brand-800 font-bold' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Paket Semester {studentCurrentSemester} ({mySemesterClassesCount} Kelas)
+              </button>
               <button
                 onClick={() => setFilterMhsScope('ENROLLED')}
                 className={`px-3 py-1 rounded-lg font-medium transition-all ${
                   filterMhsScope === 'ENROLLED' ? 'bg-white shadow text-emerald-800 font-bold' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                Kelas Saya ({myEnrolledClassesCount})
+                Kelas Terdaftar ({myEnrolledClassesCount})
               </button>
               <button
                 onClick={() => setFilterMhsScope('ALL')}
@@ -484,6 +531,12 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
             const classTa = tas.find(t => t.id === cls.tahunAkademikId || t.namaTa === cls.namaTa);
             const isClassSemesterActive = classTa ? classTa.isActive : false;
 
+            const mk = mks.find(m => m.id === cls.mataKuliahId || m.kodeMk === cls.kodeMk);
+            const courseSemester = Number(mk?.semesterDefault || 1);
+            const isProdiMatch = !mk?.prodiId || !user?.prodiId || mk.prodiId === user.prodiId;
+            const isSemesterEligible = !isMahasiswa || (studentCurrentSemester >= courseSemester);
+            const isExactSemester = isMahasiswa && courseSemester === studentCurrentSemester;
+
             return (
               <div 
                 key={cls.id}
@@ -494,6 +547,15 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className="text-[11px] font-mono font-bold px-2.5 py-0.5 rounded-lg bg-brand-50 text-brand-800 border border-brand-200">
                         {cls.kodeMk} • Kelas {cls.namaKelas}
+                      </span>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
+                        isExactSemester
+                          ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                          : isMahasiswa && !isSemesterEligible
+                          ? 'bg-amber-50 text-amber-800 border-amber-200'
+                          : 'bg-slate-100 text-slate-700 border-slate-200'
+                      }`}>
+                        Semester {courseSemester} {isExactSemester ? '• Paket Anda' : ''}
                       </span>
                       {isLecturer && (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-100 text-blue-800 border border-blue-200">
@@ -596,14 +658,31 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
                       </div>
                     )
                   ) : isMahasiswa && !isEnrolled ? (
-                    <button
-                      disabled={isFull}
-                      onClick={() => handleSelfEnroll(cls.id)}
-                      className="w-full py-1.5 bg-brand-800 hover:bg-brand-900 disabled:bg-slate-300 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-colors"
-                    >
-                      <UserPlus className="w-4 h-4" />
-                      {isFull ? 'Kuota Penuh' : 'Daftar Kelas Ini'}
-                    </button>
+                    !isSemesterEligible ? (
+                      <div 
+                        className="w-full py-2 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 cursor-not-allowed text-center px-2"
+                        title={`Mata kuliah ini dialokasikan untuk Semester ${courseSemester}. Anda berada di Semester ${studentCurrentSemester}.`}
+                      >
+                        <Lock className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                        <span>Terkunci (Belum Sampai Semester {courseSemester})</span>
+                      </div>
+                    ) : !isProdiMatch ? (
+                      <div 
+                        className="w-full py-2 bg-slate-100 border border-slate-200 text-slate-500 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 cursor-not-allowed text-center px-2"
+                      >
+                        <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span>Khusus Program Studi Lain</span>
+                      </div>
+                    ) : (
+                      <button
+                        disabled={isFull}
+                        onClick={() => handleSelfEnroll(cls.id)}
+                        className="w-full py-1.5 bg-brand-800 hover:bg-brand-900 disabled:bg-slate-300 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-colors shadow-sm"
+                      >
+                        <UserPlus className="w-4 h-4" />
+                        {isFull ? 'Kuota Penuh' : 'Ambil Kelas (KRS)'}
+                      </button>
+                    )
                   ) : isDosen ? (
                     <div className="w-full flex items-center gap-2">
                       <button
@@ -670,11 +749,11 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
                       dosenId: matchedMk?.dosenId || formData.dosenId
                     });
                   }}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 bg-white"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 bg-white font-medium"
                 >
                   {mks.map(m => (
                     <option key={m.id} value={m.id}>
-                      {m.kodeMk} - {m.namaMk} ({m.sks} SKS)
+                      {m.kodeMk} - {m.namaMk} ({m.sks} SKS) • [Semester {m.semesterDefault || 1}]
                     </option>
                   ))}
                 </select>
@@ -934,20 +1013,35 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
+              <div className="flex justify-between items-center pt-3 border-t border-slate-200">
                 <button
                   type="button"
-                  onClick={() => { setShowEditModal(false); setSelectedClassToEdit(null); }}
-                  className="px-3.5 py-1.5 text-slate-600 hover:bg-slate-100 rounded-lg font-medium"
+                  onClick={(e) => {
+                    const targetCls = selectedClassToEdit;
+                    setShowEditModal(false);
+                    setSelectedClassToEdit(null);
+                    handleDeleteClass(targetCls, e);
+                  }}
+                  className="px-3 py-1.5 text-rose-600 hover:bg-rose-50 rounded-lg font-bold flex items-center gap-1.5 transition-colors text-xs border border-rose-200 hover:border-rose-300"
                 >
-                  Batal
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Hapus Kelas Ini</span>
                 </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 bg-amber-700 hover:bg-amber-800 text-white rounded-lg font-bold shadow"
-                >
-                  Simpan Perubahan
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setShowEditModal(false); setSelectedClassToEdit(null); }}
+                    className="px-3.5 py-1.5 text-slate-600 hover:bg-slate-100 rounded-lg font-medium"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-1.5 bg-amber-700 hover:bg-amber-800 text-white rounded-lg font-bold shadow"
+                  >
+                    Simpan Perubahan
+                  </button>
+                </div>
               </div>
             </form>
           </div>

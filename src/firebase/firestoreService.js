@@ -122,6 +122,21 @@ export async function getLocal(key, initial) {
               const delRaw = localStorage.getItem('STIE_LMS_DELETED_USERS');
               if (delRaw) deletedIds = JSON.parse(delRaw);
             } catch(e) {}
+          } else if (key === STORAGE_KEYS.CLASSES) {
+            try {
+              const delRaw = localStorage.getItem('STIE_LMS_DELETED_CLASSES');
+              if (delRaw) deletedIds = JSON.parse(delRaw);
+            } catch(e) {}
+          } else if (key === STORAGE_KEYS.TA) {
+            try {
+              const delRaw = localStorage.getItem('STIE_LMS_DELETED_TA');
+              if (delRaw) deletedIds = JSON.parse(delRaw);
+            } catch(e) {}
+          } else if (key === STORAGE_KEYS.MK) {
+            try {
+              const delRaw = localStorage.getItem('STIE_LMS_DELETED_MK');
+              if (delRaw) deletedIds = JSON.parse(delRaw);
+            } catch(e) {}
           }
 
           // Gabungkan remoteItems dan localItems (pertahankan data lokal baru yang belum sempat tersinkron)
@@ -146,7 +161,7 @@ export async function getLocal(key, initial) {
 
           if (deletedIds.length > 0) {
             finalItems = finalItems.filter(item => {
-              const id = item.uid || item.id;
+              const id = String(item.uid || item.id || '');
               return !deletedIds.includes(id);
             });
           }
@@ -161,11 +176,41 @@ export async function getLocal(key, initial) {
     }
   }
 
+  // Ambil daftar ID yang dihapus untuk fallback local
+  let localDeletedIds = [];
+  if (key === STORAGE_KEYS.USERS) {
+    try {
+      const delRaw = localStorage.getItem('STIE_LMS_DELETED_USERS');
+      if (delRaw) localDeletedIds = JSON.parse(delRaw);
+    } catch(e) {}
+  } else if (key === STORAGE_KEYS.CLASSES) {
+    try {
+      const delRaw = localStorage.getItem('STIE_LMS_DELETED_CLASSES');
+      if (delRaw) localDeletedIds = JSON.parse(delRaw);
+    } catch(e) {}
+  } else if (key === STORAGE_KEYS.TA) {
+    try {
+      const delRaw = localStorage.getItem('STIE_LMS_DELETED_TA');
+      if (delRaw) localDeletedIds = JSON.parse(delRaw);
+    } catch(e) {}
+  } else if (key === STORAGE_KEYS.MK) {
+    try {
+      const delRaw = localStorage.getItem('STIE_LMS_DELETED_MK');
+      if (delRaw) localDeletedIds = JSON.parse(delRaw);
+    } catch(e) {}
+  }
+
   if (Array.isArray(localItems) && localItems.length > 0) {
+    if (localDeletedIds.length > 0) {
+      localItems = localItems.filter(item => !localDeletedIds.includes(String(item.id || item.uid || '')));
+    }
     return localItems;
   }
-  await setLocal(key, initial);
-  return initial;
+  const cleanInitial = (localDeletedIds.length > 0 && Array.isArray(initial))
+    ? initial.filter(item => !localDeletedIds.includes(String(item.id || item.uid || '')))
+    : initial;
+  await setLocal(key, cleanInitial);
+  return cleanInitial;
 }
 
 export async function setLocal(key, value) {
@@ -208,25 +253,62 @@ export async function setLocal(key, value) {
 export async function initializeLocalStore() {
   await getLocal(STORAGE_KEYS.FAKULTAS, INITIAL_FAKULTAS);
   await getLocal(STORAGE_KEYS.PRODI, INITIAL_PRODI);
-  await getLocal(STORAGE_KEYS.TA, INITIAL_TA);
+  
+  // Pastikan Semester / TA yang dihapus tidak dibangkitkan
+  let deletedTaIds = [];
+  try {
+    const delRaw = localStorage.getItem('STIE_LMS_DELETED_TA');
+    if (delRaw) deletedTaIds = JSON.parse(delRaw);
+  } catch(e) {}
+  const existingTa = await getLocal(STORAGE_KEYS.TA, INITIAL_TA);
+  const cleanTa = existingTa.filter(t => !deletedTaIds.includes(String(t.id)));
+  if (cleanTa.length !== existingTa.length) {
+    await setLocal(STORAGE_KEYS.TA, cleanTa);
+  }
+
   await getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
-  await getLocal(STORAGE_KEYS.MK, INITIAL_MK);
+
+  // Pastikan Mata Kuliah yang baru disertakan dan yang dihapus tidak dibangkitkan
+  let deletedMkIds = [];
+  try {
+    const delRaw = localStorage.getItem('STIE_LMS_DELETED_MK');
+    if (delRaw) deletedMkIds = JSON.parse(delRaw);
+  } catch(e) {}
+  const existingMks = await getLocal(STORAGE_KEYS.MK, INITIAL_MK);
+  const missingMks = INITIAL_MK.filter(imk =>
+    !existingMks.some(emk => String(emk.id) === String(imk.id) || emk.kodeMk === imk.kodeMk) &&
+    !deletedMkIds.includes(String(imk.id))
+  );
+  const combinedMks = (missingMks.length > 0 ? [...existingMks, ...missingMks] : existingMks)
+    .filter(m => !deletedMkIds.includes(String(m.id)));
+  await setLocal(STORAGE_KEYS.MK, combinedMks);
   
   // Bersihkan materi dummy lama yang memiliki raw.githubusercontent.com dan sertakan kelas baru jika ada
+  let deletedClassIds = [];
+  try {
+    const delRaw = localStorage.getItem('STIE_LMS_DELETED_CLASSES');
+    if (delRaw) deletedClassIds = JSON.parse(delRaw);
+  } catch(e) {}
+
   const existingClasses = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
-  const missingInitial = INITIAL_CLASSES.filter(ic => !existingClasses.some(ec => ec.id === ic.id));
+  const missingInitial = INITIAL_CLASSES.filter(ic => 
+    !existingClasses.some(ec => String(ec.id) === String(ic.id)) &&
+    !deletedClassIds.includes(String(ic.id))
+  );
   const combinedClasses = missingInitial.length > 0 ? [...existingClasses, ...missingInitial] : existingClasses;
 
-  const cleanedClasses = combinedClasses.map(cls => ({
-    ...cls,
-    meetings: (cls.meetings || []).map(m => ({
-      ...m,
-      materials: (m.materials || []).filter(mat => 
-        !mat.judul?.includes('Slide Materi Pertemuan 2') &&
-        !(mat.fileUrl || '').includes('raw.githubusercontent.com')
-      )
-    }))
-  }));
+  const cleanedClasses = combinedClasses
+    .filter(cls => !deletedClassIds.includes(String(cls.id)))
+    .map(cls => ({
+      ...cls,
+      meetings: (cls.meetings || []).map(m => ({
+        ...m,
+        materials: (m.materials || []).filter(mat => 
+          !mat.judul?.includes('Slide Materi Pertemuan 2') &&
+          !(mat.fileUrl || '').includes('raw.githubusercontent.com')
+        )
+      }))
+    }));
   await setLocal(STORAGE_KEYS.CLASSES, cleanedClasses);
 
   await getLocal(STORAGE_KEYS.LOGS, INITIAL_AUDIT_LOGS);
@@ -357,9 +439,31 @@ export async function toggleTahunAkademikStatus(taId, user) {
 }
 
 export async function deleteTahunAkademik(taId, user) {
+  if (!taId) throw new Error("ID Semester tidak valid");
   const list = await getLocal(STORAGE_KEYS.TA, INITIAL_TA);
-  const target = list.find(t => t.id === taId);
-  const updated = list.filter(t => t.id !== taId);
+  const target = list.find(t => String(t.id) === String(taId));
+  const updated = list.filter(t => String(t.id) !== String(taId));
+
+  // 1. Catat ke STIE_LMS_DELETED_TA agar tidak ter-resurrect
+  try {
+    const delRaw = localStorage.getItem('STIE_LMS_DELETED_TA') || '[]';
+    const delList = JSON.parse(delRaw);
+    const targetIdStr = String(taId);
+    if (!delList.includes(targetIdStr)) {
+      delList.push(targetIdStr);
+      localStorage.setItem('STIE_LMS_DELETED_TA', JSON.stringify(delList));
+    }
+  } catch (e) {}
+
+  // 2. Hapus langsung dokumen di Cloud Firestore koleksi 'tahun_akademik'
+  if (isRealFirebaseConfigured() && db) {
+    try {
+      await deleteDoc(doc(db, "tahun_akademik", String(taId)));
+    } catch (e) {
+      console.warn("Direct Firestore deleteTahunAkademik warning:", e);
+    }
+  }
+
   await setLocal(STORAGE_KEYS.TA, updated);
   await logAudit(user, 'DELETE_TA', `Menghapus Semester: ${target?.namaTa || taId}`);
   return updated;
@@ -425,9 +529,31 @@ export async function updateMataKuliah(mkId, updatedData, user) {
 }
 
 export async function deleteMataKuliah(mkId, user) {
+  if (!mkId) throw new Error("ID Mata Kuliah tidak valid");
   const list = await getLocal(STORAGE_KEYS.MK, INITIAL_MK);
-  const target = list.find(m => m.id === mkId);
-  const updated = list.filter(m => m.id !== mkId);
+  const target = list.find(m => String(m.id) === String(mkId));
+  const updated = list.filter(m => String(m.id) !== String(mkId));
+
+  // 1. Catat ke STIE_LMS_DELETED_MK agar tidak ter-resurrect
+  try {
+    const delRaw = localStorage.getItem('STIE_LMS_DELETED_MK') || '[]';
+    const delList = JSON.parse(delRaw);
+    const targetIdStr = String(mkId);
+    if (!delList.includes(targetIdStr)) {
+      delList.push(targetIdStr);
+      localStorage.setItem('STIE_LMS_DELETED_MK', JSON.stringify(delList));
+    }
+  } catch (e) {}
+
+  // 2. Hapus langsung dokumen di Cloud Firestore koleksi 'mata_kuliah'
+  if (isRealFirebaseConfigured() && db) {
+    try {
+      await deleteDoc(doc(db, "mata_kuliah", String(mkId)));
+    } catch (e) {
+      console.warn("Direct Firestore deleteMataKuliah warning:", e);
+    }
+  }
+
   await setLocal(STORAGE_KEYS.MK, updated);
   await logAudit(user, 'DELETE_MK', `Menghapus Mata Kuliah: ${target?.namaMk || mkId} (${target?.kodeMk || ''})`);
   return updated;
@@ -811,6 +937,14 @@ export async function createClass(classData, user) {
   };
 
   list.push(newClass);
+  // Bersihkan dari daftar kelas yang terhapus jika ID digunakan kembali
+  try {
+    const delRaw = localStorage.getItem('STIE_LMS_DELETED_CLASSES');
+    if (delRaw) {
+      const delList = JSON.parse(delRaw).filter(id => id !== String(classId));
+      localStorage.setItem('STIE_LMS_DELETED_CLASSES', JSON.stringify(delList));
+    }
+  } catch (e) {}
   await setLocal(STORAGE_KEYS.CLASSES, list);
 
   await logAudit(user, 'CREATE_CLASS', `Membuka kelas ${newClass.namaMk} (${newClass.namaKelas}) dengan otomatisasi 16 pertemuan.`);
@@ -838,7 +972,7 @@ export async function updateClass(classId, classData, user) {
 
   if (isRealFirebaseConfigured() && db) {
     try {
-      const classDocRef = doc(db, "classes", classId);
+      const classDocRef = doc(db, "kelas_kuliah", String(classId));
       await setDoc(classDocRef, list[index], { merge: true });
     } catch (e) {
       console.warn("Firestore updateClass sync error:", e);
@@ -850,47 +984,96 @@ export async function updateClass(classId, classData, user) {
 }
 
 export async function deleteClass(classId, user) {
+  if (!classId) throw new Error("ID kelas perkuliahan tidak valid");
+
   const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
-  const target = list.find(c => c.id === classId);
+  const target = list.find(c => String(c.id) === String(classId) || String(c.uid || '') === String(classId));
   if (!target) throw new Error("Kelas perkuliahan tidak ditemukan");
 
-  const currentRole = (user?.role || '').toUpperCase();
-  const isSuperAdmin = currentRole === 'SUPER_ADMIN' || currentRole === 'ADMIN';
-  const isBaa = currentRole === 'ADMIN_AKADEMIK' || currentRole === 'AKADEMIK' || currentRole === 'BAA';
-  if (!isSuperAdmin && !isBaa) {
-    throw new Error("Hanya Administrator dan BAA yang memiliki wewenang menghapus kelas perkuliahan.");
+  let activeUser = user;
+  if (!activeUser?.role) {
+    try {
+      const stored = localStorage.getItem('STIE_LMS_ACTIVE_USER');
+      if (stored) activeUser = JSON.parse(stored);
+    } catch (e) {}
   }
 
-  const updated = list.filter(c => c.id !== classId);
-  await setLocal(STORAGE_KEYS.CLASSES, updated);
+  const currentRole = (activeUser?.role || '').toUpperCase();
+  const isSuperAdmin = currentRole === 'SUPER_ADMIN' || currentRole === 'ADMIN';
+  const isBaa = currentRole === 'ADMIN_AKADEMIK' || currentRole === 'AKADEMIK' || currentRole === 'BAA' || isSuperAdmin;
+  if (!isSuperAdmin && !isBaa) {
+    throw new Error("Hanya Administrator dan Bagian Administrasi Akademik (BAA) yang memiliki wewenang menghapus kelas perkuliahan.");
+  }
 
+  // 1. Simpan ke STIE_LMS_DELETED_CLASSES agar tidak dibangkitkan kembali oleh Firestore getLocal atau re-seed
+  try {
+    const delRaw = localStorage.getItem('STIE_LMS_DELETED_CLASSES') || '[]';
+    const delList = JSON.parse(delRaw);
+    const targetIdStr = String(classId);
+    if (!delList.includes(targetIdStr)) {
+      delList.push(targetIdStr);
+      localStorage.setItem('STIE_LMS_DELETED_CLASSES', JSON.stringify(delList));
+    }
+  } catch (e) {
+    console.warn("LocalStorage save deleted class error:", e);
+  }
+
+  // 2. Hapus langsung dokumen di Cloud Firestore koleksi 'kelas_kuliah' (Bukan 'classes')
   if (isRealFirebaseConfigured() && db) {
     try {
-      const { deleteDoc } = await import("firebase/firestore");
-      await deleteDoc(doc(db, "classes", classId));
+      await deleteDoc(doc(db, "kelas_kuliah", String(classId)));
     } catch (e) {
-      console.warn("Firestore deleteClass sync error:", e);
+      console.warn("Firestore deleteClass direct deleteDoc error:", e);
     }
   }
 
-  await logAudit(user, 'DELETE_CLASS', `Menghapus kelas perkuliahan: ${target.namaMk} (${target.namaKelas})`);
+  // 3. Update localStorage dan kirim event sinkronisasi real-time
+  const updated = list.filter(c => String(c.id) !== String(classId) && String(c.uid || '') !== String(classId));
+  await setLocal(STORAGE_KEYS.CLASSES, updated);
+
+  // 4. Catat riwayat ke Audit Logs
+  await logAudit(activeUser, 'DELETE_CLASS', `Menghapus kelas perkuliahan: ${target.namaMk} (${target.namaKelas})`);
   return true;
 }
 
 export async function enrollStudent(classId, mhsId, user) {
-  const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
-  const classItem = list.find(c => c.id === classId);
-  if (!classItem) throw new Error("Kelas tidak ditemukan");
+  const [list, mks, users] = await Promise.all([
+    getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES),
+    getLocal(STORAGE_KEYS.MK, INITIAL_MK),
+    getLocal(STORAGE_KEYS.USERS, INITIAL_USERS)
+  ]);
+  const classItem = list.find(c => String(c.id) === String(classId) || String(c.uid || '') === String(classId));
+  if (!classItem) throw new Error("Kelas perkuliahan tidak ditemukan");
 
   // FR-03.3 Pengecekan kuota
-  if (classItem.enrolledStudents.length >= (classItem.kuota || 40)) {
+  if ((classItem.enrolledStudents || []).length >= (classItem.kuota || 40)) {
     throw new Error("Kuota kelas telah penuh!");
   }
 
-  if (classItem.enrolledStudents.includes(mhsId)) {
+  if ((classItem.enrolledStudents || []).includes(mhsId)) {
     throw new Error("Mahasiswa sudah terdaftar di kelas ini");
   }
 
+  // Validasi Prasyarat Semester & Kesesuaian Prodi KRS Mahasiswa
+  const student = users.find(u => String(u.uid || u.id) === String(mhsId)) || user;
+  const mk = mks.find(m => String(m.id) === String(classItem.mataKuliahId) || m.kodeMk === classItem.kodeMk);
+
+  if (student && mk) {
+    const studentSemester = student.semester ? Number(student.semester) : (
+      student.angkatan ? Math.max(1, ((2026 - Number(student.angkatan)) * 2) + 1) : 1
+    );
+    const courseSemester = Number(mk.semesterDefault || 1);
+
+    if (studentSemester < courseSemester) {
+      throw new Error(`Pengambilan kelas ditolak: Mata kuliah "${mk.namaMk}" dialokasikan untuk Semester ${courseSemester}. Anda saat ini berada di Semester ${studentSemester} (Angkatan ${student.angkatan || '-'}).`);
+    }
+
+    if (student.prodiId && mk.prodiId && student.prodiId !== mk.prodiId) {
+      throw new Error(`Pengambilan kelas ditolak: Mata kuliah "${mk.namaMk}" dialokasikan khusus untuk Program Studi lain.`);
+    }
+  }
+
+  if (!classItem.enrolledStudents) classItem.enrolledStudents = [];
   classItem.enrolledStudents.push(mhsId);
   await setLocal(STORAGE_KEYS.CLASSES, list);
   await logAudit(user, 'ENROLL_STUDENT', `Mendaftarkan mahasiswa ${mhsId} ke kelas ${classItem.namaMk}`);
