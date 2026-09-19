@@ -22,6 +22,18 @@ export function normalizeLoginIdentifier(identifier) {
   return `${trimmed}@lms.stienas.ac.id`;
 }
 
+// =========================================================================
+// MEKANISME SESSION TIMEOUT & INACTIVITY TIMEOUT (15 MENIT)
+// =========================================================================
+export const SESSION_TIMEOUT_MS = 15 * 60 * 1000; // 15 Menit Inactive Timeout
+export const WARNING_BEFORE_TIMEOUT_MS = 2 * 60 * 1000; // Peringatan 2 Menit sebelum timeout
+
+export function recordUserActivity() {
+  try {
+    localStorage.setItem('STIE_LMS_LAST_ACTIVITY', Date.now().toString());
+  } catch (e) {}
+}
+
 /**
  * Login dengan Email / NIM / NIDN + Password
  */
@@ -166,6 +178,8 @@ export async function loginUser(identifier, password) {
     };
 
     localStorage.setItem('STIE_LMS_ACTIVE_USER', JSON.stringify(activeUser));
+    recordUserActivity();
+    localStorage.removeItem('STIE_LMS_SESSION_EXPIRED');
     return activeUser;
   }
 
@@ -187,6 +201,8 @@ export async function loginUser(identifier, password) {
         }
         const fullProfile = { uid: user.uid, ...userData };
         localStorage.setItem('STIE_LMS_ACTIVE_USER', JSON.stringify(fullProfile));
+        recordUserActivity();
+        localStorage.removeItem('STIE_LMS_SESSION_EXPIRED');
         return fullProfile;
       } else {
         const newProfile = {
@@ -199,6 +215,8 @@ export async function loginUser(identifier, password) {
         };
         await setDoc(userDocRef, newProfile);
         localStorage.setItem('STIE_LMS_ACTIVE_USER', JSON.stringify(newProfile));
+        recordUserActivity();
+        localStorage.removeItem('STIE_LMS_SESSION_EXPIRED');
         return newProfile;
       }
     } catch (fbErr) {
@@ -214,6 +232,7 @@ export async function loginUser(identifier, password) {
  */
 export async function logoutUser() {
   localStorage.removeItem('STIE_LMS_ACTIVE_USER');
+  localStorage.removeItem('STIE_LMS_LAST_ACTIVITY');
   if (isRealFirebaseConfigured() && auth) {
     try {
       await firebaseSignOut(auth);
@@ -224,12 +243,29 @@ export async function logoutUser() {
 }
 
 /**
- * Dapatkan user tersimpan dari local state
+ * Dapatkan user tersimpan dari local state dengan validasi Session Inactivity Timeout
  */
 export function getCurrentUser() {
   try {
     const saved = localStorage.getItem('STIE_LMS_ACTIVE_USER');
-    if (saved) return JSON.parse(saved);
+    if (!saved) return null;
+
+    // Verifikasi batas waktu ketidakaktifan (Session Timeout 15 menit)
+    const lastActivity = localStorage.getItem('STIE_LMS_LAST_ACTIVITY');
+    if (lastActivity) {
+      const elapsed = Date.now() - parseInt(lastActivity, 10);
+      if (elapsed > SESSION_TIMEOUT_MS) {
+        localStorage.removeItem('STIE_LMS_ACTIVE_USER');
+        localStorage.removeItem('STIE_LMS_LAST_ACTIVITY');
+        localStorage.setItem('STIE_LMS_SESSION_EXPIRED', 'true');
+        return null;
+      }
+    } else {
+      // Jika belum ada stempel aktivitas, catat saat ini
+      recordUserActivity();
+    }
+
+    return JSON.parse(saved);
   } catch (e) {
     console.error("Gagal membaca active user:", e);
   }
