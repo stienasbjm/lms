@@ -6,6 +6,7 @@ import {
   getUsers, 
   getTahunAkademik, 
   getMataKuliah,
+  getProdi,
   subscribeToDataSync,
   isClassAssignedToLecturer 
 } from '../firebase/firestoreService';
@@ -19,6 +20,7 @@ import {
 } from '../utils/gradeCalculator';
 import { showSuccessAlert, showErrorAlert } from '../utils/alert';
 import { exportToCSV } from '../utils/csvExporter';
+import ReportPrintModal from '../components/common/ReportPrintModal';
 import { 
   Award, 
   Download, 
@@ -33,7 +35,8 @@ import {
   Check,
   AlertCircle,
   Lock,
-  Calendar
+  Calendar,
+  Printer
 } from 'lucide-react';
 
 export default function GradebookPage({ initialClassId }) {
@@ -43,8 +46,13 @@ export default function GradebookPage({ initialClassId }) {
   const [usersList, setUsersList] = useState([]);
   const [tas, setTas] = useState([]);
   const [mks, setMks] = useState([]);
+  const [prodis, setProdis] = useState([]);
   const [selectedSemesterId, setSelectedSemesterId] = useState('');
   const [loading, setLoading] = useState(true);
+
+  // State Modal Cetak Resmi (KHS & DPNA Nilai Kelas)
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [printModalType, setPrintModalType] = useState('KHS'); // 'KHS' | 'GRADEBOOK'
 
   // Edit Modal State (Dosen / Admin)
   const [editingStudent, setEditingStudent] = useState(null);
@@ -59,16 +67,18 @@ export default function GradebookPage({ initialClassId }) {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [cls, usrs, tList, mList] = await Promise.all([
+      const [cls, usrs, tList, mList, pList] = await Promise.all([
         getClasses(),
         getUsers(),
         getTahunAkademik(),
-        getMataKuliah()
+        getMataKuliah(),
+        getProdi()
       ]);
       setClasses(cls);
       setUsersList(usrs);
       setTas(tList);
       setMks(mList);
+      setProdis(pList || []);
 
       const activeTa = tList.find(t => t.isActive) || tList[0];
       const targetSemId = selectedSemesterId || activeTa?.id || 'ALL';
@@ -407,13 +417,25 @@ export default function GradebookPage({ initialClassId }) {
             </p>
           </div>
 
-          <button
-            onClick={handleExportMyKHS}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow transition-colors"
-          >
-            <Download className="w-4 h-4" />
-            Cetak / Unduh KHS (CSV)
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setPrintModalType('KHS');
+                setShowPrintModal(true);
+              }}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand-800 hover:bg-brand-900 text-white rounded-xl text-xs font-bold shadow transition-colors"
+            >
+              <Printer className="w-4 h-4 text-amber-300" />
+              Cetak KHS Resmi (Print / PDF)
+            </button>
+            <button
+              onClick={handleExportMyKHS}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-xl text-xs font-semibold shadow-sm transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              Unduh CSV
+            </button>
+          </div>
         </div>
 
         {/* Profil Mahasiswa Banner */}
@@ -429,9 +451,9 @@ export default function GradebookPage({ initialClassId }) {
               <div className="text-xs text-slate-500 flex flex-wrap gap-2 mt-0.5">
                 <span>NIM: <strong className="font-mono text-slate-800">{user.nim || '221011001'}</strong></span>
                 <span>•</span>
-                <span>Program Studi: <strong className="text-slate-800">S1 Manajemen</strong></span>
+                <span>Program Studi: <strong className="text-slate-800">{prodis.find(p => p.id === user.prodiId)?.namaProdi || user.prodi || 'S1 Manajemen'}</strong></span>
                 <span>•</span>
-                <span>Semester: <strong className="text-slate-800">5 (Ganjil)</strong></span>
+                <span>Semester: <strong className="text-slate-800">{user.semester || '5'} ({activeTa.namaTa})</strong></span>
               </div>
             </div>
           </div>
@@ -610,6 +632,22 @@ export default function GradebookPage({ initialClassId }) {
           </div>
         </div>
 
+        {/* Modal Pratinjau & Cetak Resmi KHS Mahasiswa */}
+        <ReportPrintModal
+          isOpen={showPrintModal && printModalType === 'KHS'}
+          onClose={() => setShowPrintModal(false)}
+          type="KHS"
+          student={user}
+          prodis={prodis}
+          activeTa={activeTa}
+          khsRows={myKhsRows}
+          totalSks={totalSks}
+          ipkSemester={ipkSemester}
+          totalSksXBobot={totalSksXBobot}
+          rataKetercapaianCpmk={rataKetercapaianCpmk}
+          onDownloadCSV={handleExportMyKHS}
+        />
+
       </div>
     );
   }
@@ -635,6 +673,21 @@ export default function GradebookPage({ initialClassId }) {
     };
   });
 
+  const selectedClassEnrolledRows = enrolledStudents.map(item => ({
+    nim: item.user?.nim || item.user?.username || '-',
+    nama: item.user?.name || '-',
+    tugas: item.grade.nilaiTugas || 0,
+    kuis: item.grade.nilaiKuis || 0,
+    uts: item.grade.nilaiUts || 0,
+    uas: item.grade.nilaiUas || 0,
+    akhir: item.grade.nilaiAkhir || 0,
+    huruf: item.grade.gradeLabel || item.grade.nilaiHuruf || 'E',
+    bobot: item.grade.ipk.toFixed(2).replace('.', ','),
+    cpmkPercent: `${item.grade.nilaiAkhir}%`,
+    cpmkStatus: item.grade.cpmkStatus,
+    status: item.grade.statusKelulusan || 'TIDAK LULUS'
+  }));
+
   const previewCalc = calculateFinalGrade(
     scoresForm.nilaiTugas,
     scoresForm.nilaiKuis,
@@ -659,12 +712,24 @@ export default function GradebookPage({ initialClassId }) {
         </div>
 
         <div className="flex items-center gap-2">
+          {selectedClass && (
+            <button
+              onClick={() => {
+                setPrintModalType('GRADEBOOK');
+                setShowPrintModal(true);
+              }}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-brand-800 hover:bg-brand-900 text-white rounded-xl text-xs font-bold shadow transition-colors"
+            >
+              <Printer className="w-4 h-4 text-amber-300" />
+              Cetak Rekap Nilai Kelas (Print / PDF)
+            </button>
+          )}
           <button
             onClick={handleExportClassCSV}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow transition-colors"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-xl text-xs font-semibold shadow-sm transition-colors"
           >
             <Download className="w-4 h-4" />
-            Ekspor Nilai OBE (CSV)
+            Unduh CSV
           </button>
         </div>
       </div>
@@ -1062,6 +1127,18 @@ export default function GradebookPage({ initialClassId }) {
           </div>
         </div>
       )}
+
+      {/* Modal Pratinjau & Cetak Resmi Rekap Nilai Dosen / Admin */}
+      <ReportPrintModal
+        isOpen={showPrintModal && printModalType === 'GRADEBOOK'}
+        onClose={() => setShowPrintModal(false)}
+        type="GRADEBOOK"
+        prodis={prodis}
+        activeTa={selectedTa || activeTa}
+        classData={selectedClass}
+        enrolledRows={selectedClassEnrolledRows}
+        onDownloadCSV={handleExportClassCSV}
+      />
 
     </div>
   );

@@ -91,3 +91,42 @@
 .animate-pulse-dot {
   animation: pulse-dot 2.5s ease-in-out infinite;
 }
+
+/* Print optimization for official academic reports */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  body * {
+    visibility: hidden;
+  }
+  #printable-report,
+  #printable-report * {
+    visibility: visible;
+  }
+  #printable-report {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 100vw;
+    min-height: 100vh;
+    margin: 0;
+    padding: 10mm 15mm;
+    background: #ffffff !important;
+    color: #000000 !important;
+    z-index: 999999;
+    box-shadow: none !important;
+    border: none !important;
+    display: block !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+}
