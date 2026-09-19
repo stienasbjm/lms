@@ -366,7 +366,30 @@ export async function getFakultas() {
 }
 
 export async function getProdi() {
-  return await getLocal(STORAGE_KEYS.PRODI, INITIAL_PRODI);
+  const list = await getLocal(STORAGE_KEYS.PRODI, INITIAL_PRODI);
+  return list.map(item => {
+    const init = INITIAL_PRODI.find(p => p.id === item.id || p.kodeProdi === item.kodeProdi);
+    return {
+      ...item,
+      namaKaprodi: item.namaKaprodi || init?.namaKaprodi || 'Dr. H. Muhammad Ramli, S.E., M.M.',
+      nuptkKaprodi: item.nuptkKaprodi || item.nidnKaprodi || init?.nuptkKaprodi || '1102046801'
+    };
+  });
+}
+
+export async function updateProdi(prodiId, updateData, user) {
+  const list = await getProdi();
+  const updated = list.map(item => {
+    if (item.id === prodiId) {
+      return { ...item, ...updateData };
+    }
+    return item;
+  });
+  await setLocal(STORAGE_KEYS.PRODI, updated);
+  if (user) {
+    await logAudit(user, 'UPDATE_PRODI', `Mengubah data Kaprodi / Program Studi ID: ${prodiId} (${updateData.namaKaprodi || ''})`);
+  }
+  return updated;
 }
 
 export async function getTahunAkademik() {

@@ -8,8 +8,24 @@ export const INITIAL_FAKULTAS = [
 ];
 
 export const INITIAL_PRODI = [
-  { id: 'prodi-s1-manajemen', kodeProdi: '61201', namaProdi: 'S1 Manajemen', jenjang: 'S1', fakultasId: 'feb' },
-  { id: 'prodi-s1-akuntansi', kodeProdi: '62201', namaProdi: 'S1 Akuntansi', jenjang: 'S1', fakultasId: 'feb' }
+  { 
+    id: 'prodi-s1-manajemen', 
+    kodeProdi: '61201', 
+    namaProdi: 'S1 Manajemen', 
+    jenjang: 'S1', 
+    fakultasId: 'feb',
+    namaKaprodi: 'Dr. H. Muhammad Ramli, S.E., M.M.',
+    nuptkKaprodi: '1102046801'
+  },
+  { 
+    id: 'prodi-s1-akuntansi', 
+    kodeProdi: '62201', 
+    namaProdi: 'S1 Akuntansi', 
+    jenjang: 'S1', 
+    fakultasId: 'feb',
+    namaKaprodi: 'Hj. Nurul Fadhilah, S.E., M.Ak., Ak., CA',
+    nuptkKaprodi: '1124018201'
+  }
 ];
 
 export const INITIAL_TA = [

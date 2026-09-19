@@ -1,5 +1,20 @@
-import React from 'react';
-import { Printer, Download, X, Award, GraduationCap, CheckCircle2, Building2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../../context/AuthContext';
+import { updateProdi } from '../../firebase/firestoreService';
+import { 
+  Printer, 
+  Download, 
+  X, 
+  Award, 
+  GraduationCap, 
+  CheckCircle2, 
+  Building2,
+  Edit2,
+  Save,
+  Check,
+  RotateCcw,
+  UserCheck
+} from 'lucide-react';
 
 export default function ReportPrintModal({
   isOpen,
@@ -17,10 +32,58 @@ export default function ReportPrintModal({
   enrolledRows = [],
   onDownloadCSV
 }) {
+  const { user, isAdmin, isBaa } = useAuth();
+  const canEditKaprodi = isAdmin || isBaa;
+
+  const targetProdi = (prodis || []).find(p => p.id === (student?.prodiId || classData?.prodiId))
+    || (prodis || []).find(p => p.namaProdi === (student?.prodi || classData?.prodi))
+    || (prodis || [])[0];
+
+  const studentProdiName = targetProdi ? targetProdi.namaProdi : (student?.prodi || 'S1 Manajemen');
+
+  // State Pejabat Ketua Program Studi yang dapat diedit manual
+  const [kaprodiName, setKaprodiName] = useState('Dr. H. Muhammad Ramli, S.E., M.M.');
+  const [kaprodiNip, setKaprodiNip] = useState('1102046801');
+  const [isEditingKaprodi, setIsEditingKaprodi] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveFeedback, setSaveFeedback] = useState('');
+
+  useEffect(() => {
+    if (targetProdi) {
+      setKaprodiName(targetProdi.namaKaprodi || 'Dr. H. Muhammad Ramli, S.E., M.M.');
+      setKaprodiNip(targetProdi.nuptkKaprodi || targetProdi.nidnKaprodi || '1102046801');
+    }
+  }, [targetProdi, isOpen]);
+
   if (!isOpen) return null;
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleSaveKaprodiMaster = async () => {
+    if (!targetProdi?.id) return;
+    setIsSaving(true);
+    try {
+      await updateProdi(targetProdi.id, {
+        namaKaprodi: kaprodiName,
+        nuptkKaprodi: kaprodiNip
+      }, user);
+      setSaveFeedback('Berhasil disimpan ke Master Program Studi!');
+      setTimeout(() => setSaveFeedback(''), 4000);
+    } catch (err) {
+      console.error(err);
+      setSaveFeedback('Gagal menyimpan data.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleResetKaprodi = () => {
+    if (targetProdi) {
+      setKaprodiName(targetProdi.namaKaprodi || 'Dr. H. Muhammad Ramli, S.E., M.M.');
+      setKaprodiNip(targetProdi.nuptkKaprodi || targetProdi.nidnKaprodi || '1102046801');
+    }
   };
 
   const currentDateFormatted = new Intl.DateTimeFormat('id-ID', {
@@ -28,9 +91,6 @@ export default function ReportPrintModal({
     month: 'long',
     year: 'numeric'
   }).format(new Date());
-
-  const prodiObj = prodis.find(p => p.id === student?.prodiId);
-  const studentProdiName = prodiObj ? prodiObj.namaProdi : 'S1 Manajemen';
 
   // Perhitungan statistik untuk Buku Nilai Kelas
   const totalStudents = enrolledRows.length;
@@ -64,6 +124,21 @@ export default function ReportPrintModal({
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Tombol Edit Pejabat Kaprodi untuk Admin / BAA / Penilai */}
+            <button
+              onClick={() => setIsEditingKaprodi(!isEditingKaprodi)}
+              type="button"
+              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
+                isEditingKaprodi 
+                  ? 'bg-amber-400 text-slate-950 border-amber-300 shadow' 
+                  : 'bg-slate-800 hover:bg-slate-700 text-amber-300 border-amber-400/30'
+              }`}
+              title="Ubah Pejabat Ketua Program Studi untuk Laporan Ini"
+            >
+              <Edit2 className="w-3.5 h-3.5" />
+              <span>{isEditingKaprodi ? 'Tutup Edit Kaprodi' : 'Edit Kaprodi'}</span>
+            </button>
+
             <button
               onClick={handlePrint}
               type="button"
@@ -95,6 +170,92 @@ export default function ReportPrintModal({
             </button>
           </div>
         </div>
+
+        {/* PANEL EDIT PEJABAT KAPRODI (NO-PRINT: MUNCUL KETIKA DIBUKA OLEH ADMIN / BAA) */}
+        {isEditingKaprodi && (
+          <div className="no-print bg-amber-50 border-b border-amber-200 p-4 text-xs animate-in slide-in-from-top duration-150">
+            <div className="max-w-3xl mx-auto space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 font-bold text-amber-950">
+                  <UserCheck className="w-4 h-4 text-amber-700" />
+                  <span>Pengaturan Pejabat Pengesahan: Ketua Program Studi ({targetProdi?.namaProdi || 'Prodi'})</span>
+                </div>
+                <span className="text-[11px] text-amber-800">
+                  Perubahan nama dan NUPTK/NIP langsung tampil di dokumen cetak
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">
+                    Nama Lengkap & Gelar Ketua Program Studi
+                  </label>
+                  <input
+                    type="text"
+                    value={kaprodiName}
+                    onChange={e => setKaprodiName(e.target.value)}
+                    placeholder="contoh: Dr. H. Muhammad Ramli, S.E., M.M."
+                    className="w-full px-3 py-1.5 bg-white border border-amber-300 rounded-lg outline-none focus:ring-2 focus:ring-amber-500 font-medium text-slate-900 shadow-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">
+                    NUPTK / NIP Kaprodi
+                  </label>
+                  <input
+                    type="text"
+                    value={kaprodiNip}
+                    onChange={e => setKaprodiNip(e.target.value)}
+                    placeholder="contoh: 1102046801"
+                    className="w-full px-3 py-1.5 bg-white border border-amber-300 rounded-lg outline-none focus:ring-2 focus:ring-amber-500 font-mono text-slate-900 shadow-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleResetKaprodi}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 text-slate-600 hover:text-slate-900 hover:bg-amber-100 rounded-lg transition-colors text-[11px]"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    Reset ke Standar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingKaprodi(false)}
+                    className="inline-flex items-center gap-1 px-3 py-1 bg-amber-200 hover:bg-amber-300 text-amber-900 rounded-lg font-semibold transition-colors text-[11px]"
+                  >
+                    <Check className="w-3 h-3" />
+                    Terapkan pada Dokumen Ini
+                  </button>
+                </div>
+
+                {canEditKaprodi && (
+                  <button
+                    type="button"
+                    onClick={handleSaveKaprodiMaster}
+                    disabled={isSaving}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-brand-800 hover:bg-brand-900 text-white rounded-lg font-bold shadow-sm transition-colors text-[11px]"
+                    title="Simpan permanen agar otomatis digunakan untuk cetakan berikutnya"
+                  >
+                    <Save className="w-3.5 h-3.5 text-amber-300" />
+                    {isSaving ? 'Menyimpan...' : 'Simpan Permanen ke Master Prodi'}
+                  </button>
+                )}
+              </div>
+
+              {saveFeedback && (
+                <div className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded text-[11px] font-semibold flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  {saveFeedback}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* CONTAINER LEMBAR DOKUMEN CETAK (ID: printable-report) */}
         <div id="printable-report" className="p-6 sm:p-10 text-slate-900 bg-white font-sans text-xs leading-relaxed max-h-[80vh] overflow-y-auto print:max-h-none print:overflow-visible print:p-0">
@@ -134,7 +295,7 @@ export default function ReportPrintModal({
                   Kartu Hasil Studi (KHS) Mahasiswa
                 </h2>
                 <p className="text-[11px] font-bold text-slate-700">
-                  Tahun Akademik: {activeTa?.namaTa || '2026/2027 Ganjil'}
+                  Tahun Akademik {activeTa?.namaTa || '2026/2027 Ganjil'}
                 </p>
               </div>
 
@@ -142,70 +303,76 @@ export default function ReportPrintModal({
               <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs print:bg-transparent print:border-slate-400">
                 <div className="flex">
                   <span className="w-28 text-slate-500 print:text-slate-800">Nama Mahasiswa</span>
-                  <span className="font-bold text-slate-900">: {student?.name || 'Mahasiswa'}</span>
+                  <span className="font-bold text-slate-900">: {student?.name || '-'}</span>
                 </div>
                 <div className="flex">
                   <span className="w-28 text-slate-500 print:text-slate-800">Program Studi</span>
-                  <span className="font-semibold text-slate-900">: {studentProdiName}</span>
+                  <span className="font-bold text-slate-900">: {studentProdiName}</span>
                 </div>
                 <div className="flex">
-                  <span className="w-28 text-slate-500 print:text-slate-800">Nomor Induk (NIM)</span>
+                  <span className="w-28 text-slate-500 print:text-slate-800">NIM</span>
                   <span className="font-bold font-mono text-slate-900">: {student?.nim || '-'}</span>
                 </div>
                 <div className="flex">
-                  <span className="w-28 text-slate-500 print:text-slate-800">Tahun Masuk / Smt</span>
-                  <span className="font-semibold text-slate-900">
-                    : Angkatan {student?.angkatan || 2026} (Semester {student?.semester || 1})
-                  </span>
+                  <span className="w-28 text-slate-500 print:text-slate-800">Jenjang / Angkatan</span>
+                  <span className="font-bold text-slate-900">: S1 (Strata Satu) / {student?.tahunMasuk || student?.angkatan || '2023'}</span>
+                </div>
+                <div className="flex">
+                  <span className="w-28 text-slate-500 print:text-slate-800">Semester Aktif</span>
+                  <span className="font-bold text-slate-900">: Semester {student?.semester || '5'} ({activeTa?.namaTa || 'Ganjil'})</span>
+                </div>
+                <div className="flex">
+                  <span className="w-28 text-slate-500 print:text-slate-800">Dosen PA</span>
+                  <span className="font-bold text-slate-900">: Dra. Hj. Siti Rahmah, M.Si.</span>
                 </div>
               </div>
 
-              {/* TABEL NILAI KHS */}
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse border border-slate-300 text-[11px] print:text-[10px]">
+              {/* TABEL KHS RESMI */}
+              <div className="border border-slate-900 rounded-lg overflow-hidden">
+                <table className="w-full text-left border-collapse text-[11px]">
                   <thead>
-                    <tr className="bg-slate-100 text-slate-900 font-bold border-b border-slate-300 print:bg-slate-200">
-                      <th className="border border-slate-300 p-2 text-center w-8">No</th>
-                      <th className="border border-slate-300 p-2 w-20 text-center">Kode MK</th>
-                      <th className="border border-slate-300 p-2">Mata Kuliah Kurikulum OBE</th>
-                      <th className="border border-slate-300 p-2 text-center w-12">SKS</th>
-                      <th className="border border-slate-300 p-2 text-center w-14">Nilai</th>
-                      <th className="border border-slate-300 p-2 text-center w-14">Huruf</th>
-                      <th className="border border-slate-300 p-2 text-center w-14">Bobot</th>
-                      <th className="border border-slate-300 p-2 text-center w-16">Mutu (KxN)</th>
-                      <th className="border border-slate-300 p-2 text-center w-24">Capaian OBE</th>
-                      <th className="border border-slate-300 p-2 text-center w-20">Status</th>
+                    <tr className="bg-slate-100 text-slate-900 border-b border-slate-900 font-bold text-center print:bg-slate-100">
+                      <th className="p-1.5 border-r border-slate-400 w-8">No</th>
+                      <th className="p-1.5 border-r border-slate-400 w-16">Kode MK</th>
+                      <th className="p-1.5 border-r border-slate-400 text-left">Mata Kuliah</th>
+                      <th className="p-1.5 border-r border-slate-400 w-10">SKS</th>
+                      <th className="p-1.5 border-r border-slate-400 text-left">Dosen Pengampu</th>
+                      <th className="p-1.5 border-r border-slate-400 w-12">Nilai Akhir</th>
+                      <th className="p-1.5 border-r border-slate-400 w-12">Huruf Mutu</th>
+                      <th className="p-1.5 border-r border-slate-400 w-12">Bobot (K)</th>
+                      <th className="p-1.5 border-r border-slate-400 w-14">SKS x K</th>
+                      <th className="p-1.5 border-r border-slate-400 w-16">CPMK (OBE)</th>
+                      <th className="p-1.5 w-16">Status</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-slate-300">
                     {khsRows.length === 0 ? (
                       <tr>
-                        <td colSpan={10} className="border border-slate-300 p-4 text-center text-slate-500 italic">
-                          Belum ada kelas perkuliahan atau nilai yang terdaftar pada semester ini.
+                        <td colSpan={11} className="p-6 text-center text-slate-500 italic">
+                          Belum ada mata kuliah yang terdaftar atau dinilai pada semester ini.
                         </td>
                       </tr>
                     ) : (
                       khsRows.map((row, idx) => {
-                        const kxn = (row.sks * row.bobot).toFixed(2);
+                        const sksNum = Number(row.sks) || 0;
+                        const bobotNum = parseFloat(String(row.bobot).replace(',', '.')) || 0;
+                        const sksXBobotRow = (sksNum * bobotNum).toFixed(2);
                         return (
-                          <tr key={row.id || idx} className="hover:bg-slate-50">
-                            <td className="border border-slate-300 p-1.5 text-center font-medium">{idx + 1}</td>
-                            <td className="border border-slate-300 p-1.5 text-center font-mono font-bold text-slate-800">{row.kodeMk}</td>
-                            <td className="border border-slate-300 p-1.5 font-semibold text-slate-900">
-                              {row.namaMk}
-                              <span className="text-[9px] text-slate-500 block font-normal">Dosen: {row.dosen} (Kelas {row.namaKelas})</span>
+                          <tr key={idx} className="hover:bg-slate-50/50 print:hover:bg-transparent">
+                            <td className="p-1.5 border-r border-slate-300 text-center font-mono">{idx + 1}</td>
+                            <td className="p-1.5 border-r border-slate-300 text-center font-mono font-bold">{row.kodeMk}</td>
+                            <td className="p-1.5 border-r border-slate-300 font-semibold">{row.namaMk}</td>
+                            <td className="p-1.5 border-r border-slate-300 text-center font-mono">{row.sks}</td>
+                            <td className="p-1.5 border-r border-slate-300 text-slate-700">{row.dosen}</td>
+                            <td className="p-1.5 border-r border-slate-300 text-center font-bold font-mono">{row.nilaiAkhir}</td>
+                            <td className="p-1.5 border-r border-slate-300 text-center font-extrabold font-mono">{row.gradeLabel}</td>
+                            <td className="p-1.5 border-r border-slate-300 text-center font-mono">{row.bobot}</td>
+                            <td className="p-1.5 border-r border-slate-300 text-center font-mono font-bold">{sksXBobotRow}</td>
+                            <td className="p-1.5 border-r border-slate-300 text-center">
+                              <span className="font-bold font-mono">{row.cpmkPercent}</span>
                             </td>
-                            <td className="border border-slate-300 p-1.5 text-center font-semibold">{row.sks}</td>
-                            <td className="border border-slate-300 p-1.5 text-center font-mono">{row.nilaiAkhir}</td>
-                            <td className="border border-slate-300 p-1.5 text-center font-bold">{row.huruf}</td>
-                            <td className="border border-slate-300 p-1.5 text-center">{row.bobot.toFixed(2)}</td>
-                            <td className="border border-slate-300 p-1.5 text-center font-mono font-semibold">{kxn}</td>
-                            <td className="border border-slate-300 p-1.5 text-center">
-                              <span className="font-semibold text-slate-900">{row.cpmkPercent}</span>
-                              <span className="text-[9px] text-slate-500 block">{row.cpmkStatus}</span>
-                            </td>
-                            <td className="border border-slate-300 p-1.5 text-center font-bold">
-                              <span className={row.status === 'LULUS' ? 'text-emerald-700' : 'text-rose-700'}>
+                            <td className="p-1.5 text-center font-bold">
+                              <span className={row.status === 'LULUS' ? 'text-emerald-700' : 'text-amber-700'}>
                                 {row.status}
                               </span>
                             </td>
@@ -214,45 +381,68 @@ export default function ReportPrintModal({
                       })
                     )}
                   </tbody>
-                  <tfoot>
-                    <tr className="bg-slate-100 font-bold border-t-2 border-slate-400 print:bg-slate-200">
-                      <td colSpan={3} className="border border-slate-300 p-2 text-right">TOTAL BEBAN STUDI & MUTU:</td>
-                      <td className="border border-slate-300 p-2 text-center text-brand-900">{totalSks} SKS</td>
-                      <td colSpan={3} className="border border-slate-300 p-2"></td>
-                      <td className="border border-slate-300 p-2 text-center font-mono">{totalSksXBobot.toFixed(2)}</td>
-                      <td className="border border-slate-300 p-2 text-center font-bold">{rataKetercapaianCpmk}%</td>
-                      <td className="border border-slate-300 p-2"></td>
-                    </tr>
-                  </tfoot>
+                  {khsRows.length > 0 && (
+                    <tfoot>
+                      <tr className="bg-slate-100 font-bold border-t-2 border-slate-900 print:bg-slate-100">
+                        <td colSpan={3} className="p-2 text-right border-r border-slate-400 uppercase tracking-wide text-slate-800">
+                          Total Beban &amp; Akumulasi Nilai:
+                        </td>
+                        <td className="p-2 border-r border-slate-400 text-center font-mono font-black text-sm">
+                          {totalSks} SKS
+                        </td>
+                        <td colSpan={4} className="p-2 border-r border-slate-400 text-right text-slate-700">
+                          Total Mutu ($SKS \times Bobot$):
+                        </td>
+                        <td className="p-2 border-r border-slate-400 text-center font-mono font-black text-sm">
+                          {totalSksXBobot.toFixed(2)}
+                        </td>
+                        <td colSpan={2} className="p-2 text-center text-[10px] text-slate-600">
+                          Rata-rata CPMK: <strong>{rataKetercapaianCpmk}%</strong>
+                        </td>
+                      </tr>
+                    </tfoot>
+                  )}
                 </table>
               </div>
 
-              {/* STATISTIK AKADEMIK & INDEKS PRESTASI */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 bg-brand-50 border border-brand-200 rounded-xl print:bg-slate-50 print:border-slate-300">
-                <div className="text-center">
+              {/* REKAPITULASI INDEKS PRESTASI & PRESTASI OBE */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 rounded-xl border border-slate-300 bg-slate-50 text-center print:bg-transparent print:border-slate-400">
+                <div>
                   <div className="text-[10px] text-slate-600 font-semibold uppercase">Total SKS Diambil</div>
-                  <div className="text-base font-black text-brand-900">{totalSks} SKS</div>
+                  <div className="text-base font-black text-slate-900">{totalSks} SKS</div>
                 </div>
-                <div className="text-center">
-                  <div className="text-[10px] text-slate-600 font-semibold uppercase">Total SKS x Bobot</div>
-                  <div className="text-base font-black text-brand-900">{totalSksXBobot.toFixed(2)}</div>
-                </div>
-                <div className="text-center">
+                <div>
                   <div className="text-[10px] text-slate-600 font-semibold uppercase">Indeks Prestasi Semester (IPS)</div>
-                  <div className="text-base font-black text-emerald-800">{ipkSemester} / 4.00</div>
+                  <div className="text-base font-black text-brand-900">{ipkSemester} / 4.00</div>
                 </div>
-                <div className="text-center">
-                  <div className="text-[10px] text-slate-600 font-semibold uppercase">Ketercapaian Luaran OBE</div>
-                  <div className="text-base font-black text-brand-900">{rataKetercapaianCpmk}% Terpenuhi</div>
+                <div>
+                  <div className="text-[10px] text-slate-600 font-semibold uppercase">Rata-rata CPMK OBE</div>
+                  <div className="text-base font-black text-emerald-800">{rataKetercapaianCpmk}% (Tuntas)</div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-slate-600 font-semibold uppercase">Beban SKS Maksimal Berikutnya</div>
+                  <div className="text-base font-black text-slate-900">
+                    {parseFloat(ipkSemester) >= 3.0 ? '24 SKS' : parseFloat(ipkSemester) >= 2.5 ? '21 SKS' : '18 SKS'}
+                  </div>
                 </div>
               </div>
 
-              {/* KETERANGAN SKALA NILAI */}
-              <div className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-[9px] text-slate-500 leading-tight">
-                <strong>Pedoman Konversi Nilai Mutu STIE Nasional:</strong> A = 4.00 (≥85) • A- = 3.75 (80-84) • B+ = 3.50 (75-79) • B = 3.00 (70-74) • B- = 2.75 (65-69) • C+ = 2.50 (60-64) • C = 2.00 (55-59) • D = 1.00 (45-54) • E = 0.00 (&lt;45).
+              {/* KETERANGAN KONVERSI NILAI OBE */}
+              <div className="p-2.5 rounded-lg border border-slate-200 text-[9px] text-slate-600 space-y-1">
+                <div className="font-bold text-slate-800 uppercase tracking-wide">Pedoman Konversi Nilai &amp; Mutu Akademik (OBE):</div>
+                <div className="grid grid-cols-4 sm:grid-cols-8 gap-1 text-center font-mono">
+                  <div className="p-1 bg-slate-100 rounded">A : 80-100 (4.00)</div>
+                  <div className="p-1 bg-slate-100 rounded">B+: 75-79 (3.50)</div>
+                  <div className="p-1 bg-slate-100 rounded">B : 70-74 (3.00)</div>
+                  <div className="p-1 bg-slate-100 rounded">C+: 65-69 (2.50)</div>
+                  <div className="p-1 bg-slate-100 rounded">C : 60-64 (2.00)</div>
+                  <div className="p-1 bg-slate-100 rounded">D : 50-59 (1.00)</div>
+                  <div className="p-1 bg-slate-100 rounded">E : 0-49 (0.00)</div>
+                  <div className="p-1 bg-slate-100 rounded">T : Tunda</div>
+                </div>
               </div>
 
-              {/* BLOK TANDA TANGAN */}
+              {/* BLOK TANDA TANGAN PENGESAHAN */}
               <div className="pt-6 grid grid-cols-3 text-center text-xs break-inside-avoid">
                 <div className="space-y-16">
                   <div>
@@ -261,7 +451,7 @@ export default function ReportPrintModal({
                   </div>
                   <div>
                     <p className="font-bold text-slate-900 underline">Dra. Hj. Siti Rahmah, M.Si.</p>
-                    <p className="text-[10px] text-slate-500 font-mono">NIDN: 1105087301</p>
+                    <p className="text-[10px] text-slate-500 font-mono">NUPTK/NIP: 1105087301</p>
                   </div>
                 </div>
 
@@ -279,11 +469,23 @@ export default function ReportPrintModal({
                 <div className="space-y-16">
                   <div>
                     <p className="text-[10px] text-slate-500">Banjarmasin, {currentDateFormatted}</p>
-                    <p className="font-bold text-slate-900">Ketua Program Studi</p>
+                    <p className="font-bold text-slate-900 flex items-center justify-center gap-1">
+                      <span>Ketua Program Studi</span>
+                      {canEditKaprodi && (
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingKaprodi(true)}
+                          className="no-print text-amber-600 hover:text-amber-800 text-[10px] font-normal"
+                          title="Klik untuk ubah nama Kaprodi"
+                        >
+                          (✏️ ubah)
+                        </button>
+                      )}
+                    </p>
                   </div>
                   <div>
-                    <p className="font-bold text-slate-900 underline">Dr. H. Muhammad Ramli, S.E., M.M.</p>
-                    <p className="text-[10px] text-slate-500 font-mono">NIDN: 1102046801</p>
+                    <p className="font-bold text-slate-900 underline">{kaprodiName}</p>
+                    <p className="text-[10px] text-slate-500 font-mono">NUPTK/NIP: {kaprodiNip}</p>
                   </div>
                 </div>
               </div>
@@ -313,63 +515,68 @@ export default function ReportPrintModal({
                 </div>
                 <div className="flex">
                   <span className="w-28 text-slate-500 print:text-slate-800">Kelas / Ruang</span>
-                  <span className="font-semibold text-slate-900">: Kelas {classData?.namaKelas || 'A'} • {classData?.ruang || 'Lab'}</span>
+                  <span className="font-bold text-slate-900">: Kelas {classData?.namaKelas || 'A'} / {classData?.ruang || 'Lab / R-201'}</span>
                 </div>
                 <div className="flex">
                   <span className="w-28 text-slate-500 print:text-slate-800">Dosen Pengampu</span>
-                  <span className="font-bold text-slate-900">: {classData?.namaDosen || '-'}</span>
+                  <span className="font-bold text-slate-900">: {classData?.namaDosen || 'Dosen Pengampu'}</span>
                 </div>
                 <div className="flex">
                   <span className="w-28 text-slate-500 print:text-slate-800">Jadwal Kuliah</span>
-                  <span className="font-semibold text-slate-900">: {classData?.hari || 'Senin'}, {classData?.jam || '08:00 WITA'}</span>
+                  <span className="font-bold text-slate-900">: {classData?.hari || 'Senin'}, {classData?.jamMulai || '08:00'} - {classData?.jamSelesai || '10:30'} WITA</span>
+                </div>
+                <div className="flex">
+                  <span className="w-28 text-slate-500 print:text-slate-800">Tahun Akademik</span>
+                  <span className="font-bold text-slate-900">: {classData?.namaTa || activeTa?.namaTa || '2026/2027 Ganjil'}</span>
+                </div>
+                <div className="flex">
+                  <span className="w-28 text-slate-500 print:text-slate-800">Program Studi</span>
+                  <span className="font-bold text-slate-900">: {studentProdiName}</span>
                 </div>
               </div>
 
-              {/* TABEL NILAI SELURUH MAHASISWA */}
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse border border-slate-300 text-[11px] print:text-[10px]">
+              {/* TABEL BUKU NILAI KELAS OBE */}
+              <div className="border border-slate-900 rounded-lg overflow-hidden">
+                <table className="w-full text-left border-collapse text-[11px]">
                   <thead>
-                    <tr className="bg-slate-100 text-slate-900 font-bold border-b border-slate-300 print:bg-slate-200">
-                      <th className="border border-slate-300 p-2 text-center w-8">No</th>
-                      <th className="border border-slate-300 p-2 w-24 text-center">NIM</th>
-                      <th className="border border-slate-300 p-2">Nama Lengkap Mahasiswa</th>
-                      <th className="border border-slate-300 p-2 text-center w-14">Tugas (20%)</th>
-                      <th className="border border-slate-300 p-2 text-center w-14">Kuis (15%)</th>
-                      <th className="border border-slate-300 p-2 text-center w-14">UTS (30%)</th>
-                      <th className="border border-slate-300 p-2 text-center w-14">UAS (35%)</th>
-                      <th className="border border-slate-300 p-2 text-center w-14">Akhir</th>
-                      <th className="border border-slate-300 p-2 text-center w-14">Huruf</th>
-                      <th className="border border-slate-300 p-2 text-center w-14">Bobot</th>
-                      <th className="border border-slate-300 p-2 text-center w-24">Luaran CPMK</th>
-                      <th className="border border-slate-300 p-2 text-center w-20">Kelulusan</th>
+                    <tr className="bg-slate-100 text-slate-900 border-b border-slate-900 font-bold text-center print:bg-slate-100">
+                      <th className="p-1.5 border-r border-slate-400 w-8">No</th>
+                      <th className="p-1.5 border-r border-slate-400 w-24">NIM</th>
+                      <th className="p-1.5 border-r border-slate-400 text-left">Nama Mahasiswa</th>
+                      <th className="p-1.5 border-r border-slate-400 w-12">Tugas (20%)</th>
+                      <th className="p-1.5 border-r border-slate-400 w-12">Kuis (15%)</th>
+                      <th className="p-1.5 border-r border-slate-400 w-12">UTS (30%)</th>
+                      <th className="p-1.5 border-r border-slate-400 w-12">UAS (35%)</th>
+                      <th className="p-1.5 border-r border-slate-400 w-12">Nilai Akhir</th>
+                      <th className="p-1.5 border-r border-slate-400 w-12">Huruf Mutu</th>
+                      <th className="p-1.5 border-r border-slate-400 w-12">Bobot</th>
+                      <th className="p-1.5 border-r border-slate-400 w-14">CPMK</th>
+                      <th className="p-1.5 w-16">Status</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-slate-300">
                     {enrolledRows.length === 0 ? (
                       <tr>
-                        <td colSpan={12} className="border border-slate-300 p-4 text-center text-slate-500 italic">
+                        <td colSpan={12} className="p-6 text-center text-slate-500 italic">
                           Belum ada mahasiswa yang terdaftar di kelas perkuliahan ini.
                         </td>
                       </tr>
                     ) : (
                       enrolledRows.map((row, idx) => (
-                        <tr key={row.nim || idx} className="hover:bg-slate-50">
-                          <td className="border border-slate-300 p-1.5 text-center font-medium">{idx + 1}</td>
-                          <td className="border border-slate-300 p-1.5 text-center font-mono font-bold text-slate-800">{row.nim}</td>
-                          <td className="border border-slate-300 p-1.5 font-semibold text-slate-900">{row.nama}</td>
-                          <td className="border border-slate-300 p-1.5 text-center font-mono">{row.tugas}</td>
-                          <td className="border border-slate-300 p-1.5 text-center font-mono">{row.kuis}</td>
-                          <td className="border border-slate-300 p-1.5 text-center font-mono">{row.uts}</td>
-                          <td className="border border-slate-300 p-1.5 text-center font-mono">{row.uas}</td>
-                          <td className="border border-slate-300 p-1.5 text-center font-mono font-bold text-brand-900">{row.akhir}</td>
-                          <td className="border border-slate-300 p-1.5 text-center font-black">{row.huruf}</td>
-                          <td className="border border-slate-300 p-1.5 text-center font-mono">{row.bobot}</td>
-                          <td className="border border-slate-300 p-1.5 text-center">
-                            <span className="font-semibold text-slate-900">{row.cpmkPercent}</span>
-                            <span className="text-[9px] text-slate-500 block">{row.cpmkStatus}</span>
-                          </td>
-                          <td className="border border-slate-300 p-1.5 text-center font-bold">
-                            <span className={row.status === 'LULUS' ? 'text-emerald-700' : 'text-rose-700'}>
+                        <tr key={idx} className="hover:bg-slate-50/50 print:hover:bg-transparent">
+                          <td className="p-1.5 border-r border-slate-300 text-center font-mono">{idx + 1}</td>
+                          <td className="p-1.5 border-r border-slate-300 text-center font-mono font-bold">{row.nim}</td>
+                          <td className="p-1.5 border-r border-slate-300 font-semibold">{row.nama}</td>
+                          <td className="p-1.5 border-r border-slate-300 text-center font-mono">{row.tugas}</td>
+                          <td className="p-1.5 border-r border-slate-300 text-center font-mono">{row.kuis}</td>
+                          <td className="p-1.5 border-r border-slate-300 text-center font-mono">{row.uts}</td>
+                          <td className="p-1.5 border-r border-slate-300 text-center font-mono">{row.uas}</td>
+                          <td className="p-1.5 border-r border-slate-300 text-center font-bold font-mono">{row.akhir}</td>
+                          <td className="p-1.5 border-r border-slate-300 text-center font-extrabold font-mono">{row.huruf}</td>
+                          <td className="p-1.5 border-r border-slate-300 text-center font-mono">{row.bobot}</td>
+                          <td className="p-1.5 border-r border-slate-300 text-center font-mono">{row.cpmkPercent}</td>
+                          <td className="p-1.5 text-center font-bold">
+                            <span className={row.status === 'LULUS' ? 'text-emerald-700' : 'text-amber-700'}>
                               {row.status}
                             </span>
                           </td>
@@ -380,21 +587,21 @@ export default function ReportPrintModal({
                 </table>
               </div>
 
-              {/* REKAPITULASI STATISTIK KELAS */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 bg-brand-50 border border-brand-200 rounded-xl print:bg-slate-50 print:border-slate-300">
-                <div className="text-center">
-                  <div className="text-[10px] text-slate-600 font-semibold uppercase">Peserta Terdaftar</div>
-                  <div className="text-base font-black text-brand-900">{totalStudents} Mahasiswa</div>
+              {/* STATISTIK HASIL BELAJAR KELAS */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 rounded-xl border border-slate-300 bg-slate-50 text-center print:bg-transparent print:border-slate-400">
+                <div>
+                  <div className="text-[10px] text-slate-600 font-semibold uppercase">Total Peserta Kelas</div>
+                  <div className="text-base font-black text-slate-900">{totalStudents} Mahasiswa</div>
                 </div>
-                <div className="text-center">
-                  <div className="text-[10px] text-slate-600 font-semibold uppercase">Rata-rata Kelas</div>
+                <div>
+                  <div className="text-[10px] text-slate-600 font-semibold uppercase">Nilai Rata-rata Kelas</div>
                   <div className="text-base font-black text-brand-900">{avgScore} / 100</div>
                 </div>
-                <div className="text-center">
+                <div>
                   <div className="text-[10px] text-slate-600 font-semibold uppercase">Tingkat Kelulusan</div>
                   <div className="text-base font-black text-emerald-800">{passRate}% ({passedStudents} Mhs)</div>
                 </div>
-                <div className="text-center">
+                <div>
                   <div className="text-[10px] text-slate-600 font-semibold uppercase">Standar Kurikulum</div>
                   <div className="text-base font-black text-brand-900">OBE &amp; 16 Sesi RPS</div>
                 </div>
@@ -405,11 +612,23 @@ export default function ReportPrintModal({
                 <div className="space-y-16">
                   <div>
                     <p className="text-[10px] text-slate-500">Mengetahui,</p>
-                    <p className="font-bold text-slate-900">Ketua Program Studi</p>
+                    <p className="font-bold text-slate-900 flex items-center justify-center gap-1">
+                      <span>Ketua Program Studi</span>
+                      {canEditKaprodi && (
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingKaprodi(true)}
+                          className="no-print text-amber-600 hover:text-amber-800 text-[10px] font-normal"
+                          title="Klik untuk ubah nama Kaprodi"
+                        >
+                          (✏️ ubah)
+                        </button>
+                      )}
+                    </p>
                   </div>
                   <div>
-                    <p className="font-bold text-slate-900 underline">Dr. H. Muhammad Ramli, S.E., M.M.</p>
-                    <p className="text-[10px] text-slate-500 font-mono">NIDN: 1102046801</p>
+                    <p className="font-bold text-slate-900 underline">{kaprodiName}</p>
+                    <p className="text-[10px] text-slate-500 font-mono">NUPTK/NIP: {kaprodiNip}</p>
                   </div>
                 </div>
 
@@ -420,7 +639,7 @@ export default function ReportPrintModal({
                   </div>
                   <div>
                     <p className="font-bold text-slate-900 underline">{classData?.namaDosen || 'Dosen Pengampu'}</p>
-                    <p className="text-[10px] text-slate-500 font-mono">NIDN: {classData?.dosenNidn || '1105087301'}</p>
+                    <p className="text-[10px] text-slate-500 font-mono">NUPTK/NIP: {classData?.dosenNidn || classData?.dosenNuptk || '1105087301'}</p>
                   </div>
                 </div>
               </div>
