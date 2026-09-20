@@ -374,41 +374,58 @@ export default function ReportPrintModal({
         {/* CONTAINER LEMBAR DOKUMEN CETAK (ID: printable-report) */}
         <div id="printable-report" className="p-6 sm:p-10 text-slate-900 bg-white font-sans text-xs leading-relaxed max-h-[80vh] overflow-y-auto print:max-h-none print:overflow-visible print:p-0">
           
-          {/* KOP SURAT RESMI LEMBAGA */}
-          <div className="border-b-4 border-double border-slate-900 pb-3 mb-5">
-            <div className="flex items-center gap-4">
-              <div className="w-20 h-20 shrink-0 flex items-center justify-center">
+          {/* KOP SURAT RESMI LEMBAGA SESUAI FORMAT BAKU STIENAS */}
+          <div className="mb-5 font-serif text-black select-none">
+            {/* Bagian Atas: Logo & Header Lembaga */}
+            <div className="flex items-center gap-4 pb-1">
+              <div className="w-24 h-24 shrink-0 flex items-center justify-center">
                 <img 
                   src={`${import.meta.env.BASE_URL}logo-stienas.png`} 
                   alt="Logo STIENAS Banjarmasin" 
-                  className="w-20 h-20 object-contain"
+                  className="w-24 h-24 object-contain"
                 />
               </div>
-              <div className="flex-1 text-center pr-4">
-                <h2 className="text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-900 leading-tight">
+              <div className="flex-1 text-center pr-2">
+                <h2 className="text-sm sm:text-base font-bold uppercase tracking-wide leading-tight text-black">
                   YAYASAN PENDIDIKAN BANDARMASIH
                 </h2>
-                <h1 className="text-sm sm:text-base font-black uppercase tracking-wide text-slate-950 leading-tight mt-0.5">
+                <h1 className="text-base sm:text-lg font-black uppercase tracking-tight leading-tight mt-0.5 text-black">
                   SEKOLAH TINGGI ILMU EKONOMI NASIONAL
                 </h1>
-                <h1 className="text-sm sm:text-base font-black uppercase tracking-wide text-slate-950 leading-tight">
+                <h1 className="text-base sm:text-lg font-black uppercase tracking-tight leading-tight text-black">
                   (STIENAS) BANJARMASIN
                 </h1>
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-900 mt-0.5">
+                <p className="text-xs sm:text-sm font-bold uppercase tracking-wide text-black mt-0.5">
                   BAGIAN ADMINISTRASI AKADEMIK (BAA)
                 </p>
-                <div className="text-[9px] font-semibold text-slate-700 leading-tight mt-1 space-y-0.5">
-                  <p>TERAKREDITASI SK. NO. : 501/DE/A.5/AR.10/VII/2023 PROGRAM STUDI: AKUNTANSI</p>
-                  <p>TERAKREDITASI SK. NO. : 1318/DE/A.5/AR.10/VI/2024 PROGRAM STUDI: MANAJEMEN</p>
+                <div className="text-[10px] sm:text-[11px] font-bold leading-tight mt-1.5 space-y-0.5 px-1 text-black">
+                  <div className="flex justify-between items-center">
+                    <span>TERAKREDITASI SK. NO. : 501/DE/A.5/AR.10/VII/2023</span>
+                    <span>PROGRAM STUDI: AKUNTANSI</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>TERAKREDITASI SK. NO. : 1318/DE/A.5/AR.10/VI/2024</span>
+                    <span>PROGRAM STUDI: MANAJEMEN</span>
+                  </div>
                 </div>
-                <p className="text-[9px] text-slate-600 mt-1 leading-tight">
-                  JL. Mayjend. Soetoyo S No. 126 Kota Banjarmasin, Kalimantan Selatan 70114
-                </p>
-                <p className="text-[8.5px] text-slate-600 italic leading-tight">
-                  email: info@stienas-ypb.a.c.id website: stienas-ypb.ac.id
-                </p>
               </div>
             </div>
+
+            {/* Garis Horizontal Pembatas Pertama */}
+            <div className="border-t-[1.5px] border-black w-full my-1" />
+
+            {/* Bagian Alamat, Kontak, Email, dan Website */}
+            <div className="text-center text-[10.5px] leading-tight py-0.5 text-black">
+              <p>
+                JL. Mayjend.  Soetoyo S No. 126 Kota Banjarmasin, Kalimantan Selatan 70114 Telp. 0511- 4364563
+              </p>
+              <p className="mt-0.5">
+                email: info@stienas-ypb.a.c.id website: stienas-ypb.ac.id
+              </p>
+            </div>
+
+            {/* Garis Horizontal Pembatas Kedua */}
+            <div className="border-b-[1.5px] border-black w-full mt-1" />
           </div>
 
           {/* =========================================================================
@@ -452,8 +469,8 @@ export default function ReportPrintModal({
                   <span className="font-bold text-slate-900">: Semester {student?.semester || '5'} ({activeTa?.namaTa || 'Ganjil'})</span>
                 </div>
                 <div className="flex">
-                  <span className="w-28 text-slate-500 print:text-slate-800">Dosen PA</span>
-                  <span className="font-bold text-slate-900">: Dra. Hj. Siti Rahmah, M.Si.</span>
+                  <span className="w-28 text-slate-500 print:text-slate-800">Tahun Akademik</span>
+                  <span className="font-bold text-slate-900">: {activeTa?.namaTa || '2026/2027 Ganjil'}</span>
                 </div>
               </div>
 
@@ -573,18 +590,7 @@ export default function ReportPrintModal({
               </div>
 
               {/* BLOK TANDA TANGAN PENGESAHAN */}
-              <div className="pt-6 grid grid-cols-3 text-center text-xs break-inside-avoid">
-                <div className="space-y-16">
-                  <div>
-                    <p className="text-[10px] text-slate-500">Mengetahui,</p>
-                    <p className="font-bold text-slate-900">Dosen Pembimbing Akademik</p>
-                  </div>
-                  <div>
-                    <p className="font-bold text-slate-900 underline">Dra. Hj. Siti Rahmah, M.Si.</p>
-                    <p className="text-[10px] text-slate-500 font-mono">NUPTK/NIP: 1105087301</p>
-                  </div>
-                </div>
-
+              <div className="pt-6 grid grid-cols-2 text-center text-xs break-inside-avoid">
                 <div className="space-y-16">
                   <div>
                     <p className="text-[10px] text-slate-500">Mahasiswa Yang Bersangkutan,</p>
