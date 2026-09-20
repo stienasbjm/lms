@@ -1300,6 +1300,25 @@ export async function submitAssignment(classId, meetingNumber, submissionData, u
   const meeting = classItem.meetings.find(m => m.pertemuanKe === Number(meetingNumber));
   if (!meeting) throw new Error("Pertemuan tidak ditemukan");
 
+  // Validasi jika sesi pertemuan sedang ditutup oleh dosen
+  if (meeting.isOpen === false) {
+    throw new Error("Sesi pertemuan ini sedang ditutup oleh Dosen Pengampu. Mahasiswa tidak dapat mengumpulkan tugas saat sesi ditutup.");
+  }
+
+  // Validasi jika pengumpulan tugas pada pertemuan ini telah ditutup oleh dosen
+  if (meeting.isTaskOpen === false) {
+    throw new Error("Pengumpulan tugas untuk pertemuan ini telah ditutup oleh Dosen Pengampu.");
+  }
+
+  // Cek apakah pengumpulan melewati batas waktu (deadline) yang ditentukan oleh dosen
+  let isLate = false;
+  if (meeting.taskDeadline) {
+    const deadlineDate = new Date(meeting.taskDeadline);
+    if (!isNaN(deadlineDate.getTime()) && Date.now() > deadlineDate.getTime()) {
+      isLate = true;
+    }
+  }
+
   const uid = user.uid || user.id;
   if (!meeting.submissions) meeting.submissions = {};
   meeting.submissions[uid] = {
@@ -1307,11 +1326,13 @@ export async function submitAssignment(classId, meetingNumber, submissionData, u
     mahasiswaId: uid,
     mahasiswaName: user.name || user.email || 'Mahasiswa',
     nim: user.nim || user.username || '-',
+    isLate: isLate || Boolean(submissionData.isLate),
     submittedAt: new Date().toISOString()
   };
 
   await setLocal(STORAGE_KEYS.CLASSES, list);
-  await logAudit(user, 'SUBMIT_TASK', `Mahasiswa ${user.name || user.email} mengumpulkan tugas Pertemuan ${meetingNumber}`);
+  const auditSuffix = isLate ? ' (Status: TERLAMBAT)' : '';
+  await logAudit(user, 'SUBMIT_TASK', `Mahasiswa ${user.name || user.email} mengumpulkan tugas Pertemuan ${meetingNumber}${auditSuffix}`);
   return meeting.submissions[uid];
 }
 

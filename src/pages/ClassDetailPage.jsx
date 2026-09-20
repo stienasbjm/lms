@@ -16,7 +16,8 @@ import {
   subscribeToDataSync,
   getClassMessages,
   sendClassMessage,
-  markClassMessagesAsRead
+  markClassMessagesAsRead,
+  isClassAssignedToLecturer
 } from '../firebase/firestoreService';
 import ManageClassStudentsModal from '../components/classes/ManageClassStudentsModal';
 import { compressImageIfNeeded, formatBytes } from '../utils/imageCompressor';
@@ -45,10 +46,17 @@ import {
   Check,
   Trash2,
   Lock,
+  Unlock,
   Edit3,
   MessageSquare,
   Send,
-  MessageCircle
+  MessageCircle,
+  CalendarCheck,
+  AlertTriangle,
+  ToggleLeft,
+  ToggleRight,
+  Timer,
+  ShieldAlert
 } from 'lucide-react';
 import { showSuccessAlert, showErrorAlert, showSuccessToast, showErrorToast, showConfirmDialog } from '../utils/alert';
 
@@ -71,9 +79,99 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
   const [showMediaModal, setShowMediaModal] = useState(false);
   const [showAttendanceModal, setShowAttendanceModal] = useState(false);
   const [showTaskSubmitModal, setShowTaskSubmitModal] = useState(false);
+  const [showTaskConfigModal, setShowTaskConfigModal] = useState(false);
   const [showGradingModal, setShowGradingModal] = useState(null);
   const [showEditMeetingModal, setShowEditMeetingModal] = useState(false);
   const [showStudentManagementModal, setShowStudentManagementModal] = useState(false);
+
+  // Form states untuk pengaturan tugas & jadwal deadline oleh Dosen
+  const [taskConfigForm, setTaskConfigForm] = useState({
+    taskTitle: '',
+    taskDesc: '',
+    taskWeight: '10%',
+    taskDeadline: '',
+    isTaskOpen: true,
+    hasTask: true
+  });
+
+  // Handler: Toggle buka/tutup kelas per pertemuan oleh Dosen
+  const handleToggleClassOpen = async () => {
+    if (!isTaActive) return showErrorToast('Semester telah ditutup. Tindakan tidak diizinkan.');
+    const newIsOpen = !(activeMeeting.isOpen !== false); // default open = true
+    const label = newIsOpen ? 'DIBUKA' : 'DITUTUP';
+    const confirmed = await showConfirmDialog({
+      title: newIsOpen ? 'Buka Sesi Pertemuan?' : 'Tutup Sesi Pertemuan?',
+      text: newIsOpen
+        ? `Mahasiswa akan dapat melakukan aktivitas (presensi, diskusi, tugas) pada Pertemuan ${activeMeetingNumber}.`
+        : `Mahasiswa tidak akan dapat melakukan aktivitas apapun saat sesi Pertemuan ${activeMeetingNumber} ditutup.`,
+      confirmButtonText: `Ya, ${label}`,
+      cancelButtonText: 'Batal',
+      icon: newIsOpen ? 'success' : 'warning'
+    });
+    if (!confirmed) return;
+    try {
+      // Optimistic update
+      setClassData(prev => {
+        if (!prev) return prev;
+        const updatedMeetings = prev.meetings.map(m =>
+          m.pertemuanKe === activeMeetingNumber ? { ...m, isOpen: newIsOpen } : m
+        );
+        return { ...prev, meetings: updatedMeetings };
+      });
+      await updateMeeting(classId, activeMeetingNumber, { isOpen: newIsOpen }, user);
+      showSuccessToast(`Sesi Pertemuan ${activeMeetingNumber} berhasil ${label}.`);
+      await loadClass(false);
+    } catch (err) {
+      showErrorAlert('Gagal Mengubah Status Kelas', err.message);
+      await loadClass(false);
+    }
+  };
+
+  // Handler: Buka modal konfigurasi tugas oleh Dosen
+  const handleOpenTaskConfig = () => {
+    setTaskConfigForm({
+      taskTitle: activeMeeting.taskTitle || `Tugas Studi Kasus Pertemuan ${activeMeetingNumber}`,
+      taskDesc: activeMeeting.taskDesc || '',
+      taskWeight: activeMeeting.taskWeight || '10%',
+      taskDeadline: activeMeeting.taskDeadline
+        ? new Date(activeMeeting.taskDeadline).toISOString().slice(0, 16)
+        : '',
+      isTaskOpen: activeMeeting.isTaskOpen !== false,
+      hasTask: activeMeeting.hasTask !== false
+    });
+    setShowTaskConfigModal(true);
+  };
+
+  // Handler: Simpan konfigurasi tugas oleh Dosen
+  const handleSaveTaskConfig = async (e) => {
+    e.preventDefault();
+    if (!isTaActive) return showErrorToast('Semester telah ditutup. Tindakan tidak diizinkan.');
+    try {
+      const updatedFields = {
+        taskTitle: taskConfigForm.taskTitle.trim(),
+        taskDesc: taskConfigForm.taskDesc.trim(),
+        taskWeight: taskConfigForm.taskWeight,
+        taskDeadline: taskConfigForm.taskDeadline ? new Date(taskConfigForm.taskDeadline).toISOString() : null,
+        isTaskOpen: taskConfigForm.isTaskOpen,
+        hasTask: taskConfigForm.hasTask
+      };
+      // Optimistic update
+      setClassData(prev => {
+        if (!prev) return prev;
+        const updatedMeetings = prev.meetings.map(m =>
+          m.pertemuanKe === activeMeetingNumber ? { ...m, ...updatedFields } : m
+        );
+        return { ...prev, meetings: updatedMeetings };
+      });
+      setShowTaskConfigModal(false);
+      showSuccessToast(`Pengaturan Tugas Pertemuan ${activeMeetingNumber} berhasil disimpan!`);
+      await updateMeeting(classId, activeMeetingNumber, updatedFields, user);
+      await loadClass(false);
+    } catch (err) {
+      showErrorAlert('Gagal Menyimpan Konfigurasi Tugas', err.message);
+      await loadClass(false);
+    }
+  };
 
   // Quick remove student from class (Admin & BAA)
   const handleQuickRemoveStudent = async (student) => {
@@ -690,6 +788,7 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
                 const isSelected = m.pertemuanKe === activeMeetingNumber;
                 const isUTS = m.pertemuanKe === 8;
                 const isUAS = m.pertemuanKe === 16;
+                const isSessionClosed = m.isOpen === false;
 
                 return (
                   <button
@@ -709,6 +808,12 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
                     <div className="text-[9px] font-medium tracking-tighter">
                       {isUTS ? 'UTS' : isUAS ? 'UAS' : 'Materi'}
                     </div>
+                    {/* Indikator buka/tutup sesi */}
+                    {isSessionClosed && (
+                      <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-rose-500 rounded-full flex items-center justify-center ring-1 ring-white">
+                        <Lock className="w-2 h-2 text-white" />
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -761,7 +866,35 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
                   </div>
 
                   {canManageClass && isTaActive && (
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center flex-wrap gap-2 shrink-0">
+                      {/* Toggle Buka / Tutup Sesi Pertemuan */}
+                      <button
+                        type="button"
+                        onClick={handleToggleClassOpen}
+                        title={activeMeeting.isOpen === false ? 'Buka kembali sesi pertemuan ini' : 'Tutup sesi pertemuan ini'}
+                        className={`px-3 py-1.5 border rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-sm ${
+                          activeMeeting.isOpen === false
+                            ? 'bg-rose-50 hover:bg-rose-100 text-rose-900 border-rose-200'
+                            : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border-emerald-200'
+                        }`}
+                      >
+                        {activeMeeting.isOpen === false ? (
+                          <><Lock className="w-3.5 h-3.5 text-rose-600" /><span>Sesi Ditutup</span></>
+                        ) : (
+                          <><Unlock className="w-3.5 h-3.5 text-emerald-600" /><span>Sesi Terbuka</span></>
+                        )}
+                      </button>
+                      {/* Konfigurasi Tugas */}
+                      <button
+                        type="button"
+                        onClick={handleOpenTaskConfig}
+                        className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-sm"
+                        title="Atur Tugas & Deadline Pertemuan"
+                      >
+                        <Timer className="w-3.5 h-3.5 text-purple-700" />
+                        <span>Atur Tugas</span>
+                      </button>
+                      {/* Edit judul pertemuan */}
                       <button
                         type="button"
                         onClick={handleOpenEditMeeting}
@@ -769,8 +902,16 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
                         title="Ubah Judul Pertemuan & Pokok Bahasan RPS"
                       >
                         <Edit3 className="w-3.5 h-3.5 text-amber-700" />
-                        <span>Edit Judul Pertemuan</span>
+                        <span>Edit Judul</span>
                       </button>
+                    </div>
+                  )}
+
+                  {/* Banner sesi ditutup — tampil untuk Mahasiswa */}
+                  {isMahasiswa && activeMeeting.isOpen === false && (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 border border-rose-200 rounded-xl text-xs font-bold text-rose-800 shrink-0">
+                      <Lock className="w-3.5 h-3.5 text-rose-600" />
+                      <span>Sesi Ditutup</span>
                     </div>
                   )}
                 </div>
@@ -989,21 +1130,62 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
                   )}
 
                   {/* Pengumpulan Tugas Mahasiswa (Hanya Sematkan Link - Hemat Space Server) */}
-                  {isMahasiswa && (
+                  {isMahasiswa && (() => {
+                    const isSessionClosed = activeMeeting.isOpen === false;
+                    const isTaskClosed = activeMeeting.isTaskOpen === false;
+                    const now = new Date();
+                    const deadline = activeMeeting.taskDeadline ? new Date(activeMeeting.taskDeadline) : null;
+                    const isPastDeadline = deadline && now > deadline;
+
+                    return (
                     <div className="p-4 border border-slate-200 rounded-xl space-y-3 bg-slate-50/80">
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
                         <span className="text-xs font-bold text-slate-800">Status Pengumpulan Tugas Anda</span>
-                        {mySubmission ? (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
-                            <Check className="w-3 h-3 text-emerald-600" />
-                            Terkumpul
-                          </span>
-                        ) : (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
-                            Belum Mengumpulkan
-                          </span>
-                        )}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {mySubmission ? (
+                            <>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                                <Check className="w-3 h-3 text-emerald-600" />
+                                Terkumpul
+                              </span>
+                              {mySubmission.isLate && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-1 animate-pulse">
+                                  <AlertTriangle className="w-3 h-3 text-rose-600" />
+                                  Tugas Terlambat
+                                </span>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                              Belum Mengumpulkan
+                            </span>
+                          )}
+                        </div>
                       </div>
+
+                      {/* Banner sesi kelas ditutup */}
+                      {isSessionClosed && (
+                        <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2 text-xs text-rose-800">
+                          <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />
+                          <span><strong>Sesi pertemuan ini sedang ditutup oleh Dosen.</strong> Anda tidak dapat melakukan aktivitas saat sesi ditutup.</span>
+                        </div>
+                      )}
+
+                      {/* Banner tugas ditutup / deadline lewat */}
+                      {!isSessionClosed && isTaskClosed && (
+                        <div className="p-3 bg-slate-100 border border-slate-300 rounded-xl flex items-center gap-2 text-xs text-slate-700">
+                          <Lock className="w-4 h-4 text-slate-500 shrink-0" />
+                          <span><strong>Pengumpulan tugas telah ditutup oleh Dosen.</strong> Anda tidak dapat lagi menyematkan atau memperbarui tugas.</span>
+                        </div>
+                      )}
+
+                      {/* Banner deadline terlewat (tapi tugas masih open) */}
+                      {!isSessionClosed && !isTaskClosed && isPastDeadline && !mySubmission && (
+                        <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2 text-xs text-rose-800">
+                          <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                          <span><strong>Batas waktu telah lewat!</strong> Jika masih dikumpulkan, tugas akan ditandai sebagai <strong>Terlambat</strong>.</span>
+                        </div>
+                      )}
 
                       {mySubmission ? (
                         <div className="space-y-2.5 bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
@@ -1053,7 +1235,7 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
                             </div>
                           )}
 
-                          {isTaActive && (
+                          {isTaActive && !isSessionClosed && !isTaskClosed && (
                             <button
                               type="button"
                               onClick={() => {
@@ -1072,7 +1254,7 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
                           )}
                         </div>
                       ) : (
-                        isTaActive ? (
+                        isTaActive && !isSessionClosed && !isTaskClosed ? (
                           <button
                             type="button"
                             onClick={() => {
@@ -1087,15 +1269,21 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
                           >
                             <Share2 className="w-4 h-4" />
                             Sematkan Link Tugas Mahasiswa
+                            {isPastDeadline && (
+                              <span className="ml-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-rose-500 text-white">TERLAMBAT</span>
+                            )}
                           </button>
                         ) : (
-                          <div className="text-center p-3 bg-slate-100 rounded-xl text-slate-500 text-xs font-medium border border-slate-200">
-                            Semester telah ditutup. Tidak dapat mengumpulkan tugas.
-                          </div>
+                          !isSessionClosed && !isTaskClosed && (
+                            <div className="text-center p-3 bg-slate-100 rounded-xl text-slate-500 text-xs font-medium border border-slate-200">
+                              Semester telah ditutup. Tidak dapat mengumpulkan tugas.
+                            </div>
+                          )
                         )
                       )}
                     </div>
-                  )}
+                    );
+                  })()}
 
                   {/* Daftar Pengumpulan Mahasiswa untuk Dosen & Admin */}
                   {canManageClass && (
@@ -1114,10 +1302,24 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
                       ) : (
                         <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
                           {Object.values(activeMeeting.submissions || {}).map(sub => (
-                            <div key={sub.mahasiswaId} className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs flex justify-between items-center gap-2">
+                            <div key={sub.mahasiswaId} className={`p-3 border rounded-xl text-xs flex justify-between items-center gap-2 ${
+                              sub.isLate ? 'bg-rose-50/60 border-rose-200' : 'bg-slate-50 border-slate-200'
+                            }`}>
                               <div>
-                                <div className="font-bold text-slate-900">{sub.mahasiswaName}</div>
+                                <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                                  {sub.mahasiswaName}
+                                  {sub.isLate && (
+                                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-0.5">
+                                      <AlertTriangle className="w-2.5 h-2.5" /> Terlambat
+                                    </span>
+                                  )}
+                                </div>
                                 <div className="text-[10px] text-slate-500">NIM: {sub.nim || '-'}</div>
+                                {sub.submittedAt && (
+                                  <div className="text-[10px] text-slate-400">
+                                    {new Date(sub.submittedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                  </div>
+                                )}
                                 {sub.catatan && (
                                   <div className="text-[10px] text-slate-400 italic line-clamp-1 mt-0.5">
                                     "{sub.catatan}"
@@ -1888,6 +2090,143 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
                   className="px-4 py-1.5 bg-brand-800 hover:bg-brand-900 text-white rounded-lg font-bold shadow transition-colors"
                 >
                   Simpan Judul Pertemuan
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 7: KONFIGURASI TUGAS OLEH DOSEN */}
+      {showTaskConfigModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6 border border-slate-200 animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center gap-2 mb-1">
+              <div className="p-2 rounded-lg bg-purple-50 text-purple-700">
+                <Timer className="w-5 h-5 text-purple-800" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-slate-900">
+                  Pengaturan Tugas Pertemuan {activeMeeting.pertemuanKe}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Atur judul tugas, deadline, dan status pengumpulan
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveTaskConfig} className="space-y-4 text-xs mt-4">
+              {/* Toggle Aktifkan Tugas */}
+              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <div>
+                  <div className="font-bold text-slate-900 text-xs">Aktifkan Tugas Pertemuan</div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">Mahasiswa dapat melihat dan mengumpulkan tugas</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setTaskConfigForm(f => ({ ...f, hasTask: !f.hasTask }))}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                    taskConfigForm.hasTask
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                      : 'bg-slate-100 text-slate-600 border-slate-200'
+                  }`}
+                >
+                  {taskConfigForm.hasTask ? <ToggleRight className="w-4 h-4 text-emerald-600" /> : <ToggleLeft className="w-4 h-4 text-slate-400" />}
+                  {taskConfigForm.hasTask ? 'Aktif' : 'Nonaktif'}
+                </button>
+              </div>
+
+              {taskConfigForm.hasTask && (
+                <>
+                  {/* Judul Tugas */}
+                  <div>
+                    <label className="block text-slate-700 font-semibold mb-1">Judul / Instruksi Tugas</label>
+                    <input
+                      type="text"
+                      placeholder={`Tugas Studi Kasus Pertemuan ${activeMeeting.pertemuanKe}`}
+                      value={taskConfigForm.taskTitle}
+                      onChange={e => setTaskConfigForm(f => ({ ...f, taskTitle: e.target.value }))}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-purple-500 font-bold text-slate-900 text-xs"
+                    />
+                  </div>
+
+                  {/* Deskripsi Tugas */}
+                  <div>
+                    <label className="block text-slate-700 font-semibold mb-1">Deskripsi / Detail Penugasan</label>
+                    <textarea
+                      rows="3"
+                      placeholder="Jelaskan instruksi pengerjaan tugas secara rinci..."
+                      value={taskConfigForm.taskDesc}
+                      onChange={e => setTaskConfigForm(f => ({ ...f, taskDesc: e.target.value }))}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-purple-500 text-xs leading-relaxed"
+                    />
+                  </div>
+
+                  {/* Bobot & Deadline */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-slate-700 font-semibold mb-1">Bobot Nilai OBE</label>
+                      <select
+                        value={taskConfigForm.taskWeight}
+                        onChange={e => setTaskConfigForm(f => ({ ...f, taskWeight: e.target.value }))}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-purple-500 text-xs"
+                      >
+                        {['5%','10%','15%','20%','25%','30%'].map(w => (
+                          <option key={w} value={w}>{w}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-slate-700 font-semibold mb-1">Batas Waktu (Deadline)</label>
+                      <input
+                        type="datetime-local"
+                        value={taskConfigForm.taskDeadline}
+                        onChange={e => setTaskConfigForm(f => ({ ...f, taskDeadline: e.target.value }))}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-purple-500 text-xs"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Toggle buka/tutup pengumpulan */}
+                  <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
+                    <div>
+                      <div className="font-bold text-slate-900 text-xs">Status Pengumpulan Tugas</div>
+                      <div className="text-[11px] text-slate-500 mt-0.5">
+                        {taskConfigForm.isTaskOpen
+                          ? 'Mahasiswa dapat mengumpulkan tugas'
+                          : 'Pengumpulan tugas telah ditutup'}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setTaskConfigForm(f => ({ ...f, isTaskOpen: !f.isTaskOpen }))}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                        taskConfigForm.isTaskOpen
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                          : 'bg-rose-50 text-rose-800 border-rose-300'
+                      }`}
+                    >
+                      {taskConfigForm.isTaskOpen
+                        ? <><ToggleRight className="w-4 h-4 text-emerald-600" /> Terbuka</>
+                        : <><ToggleLeft className="w-4 h-4 text-rose-400" /> Ditutup</>}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setShowTaskConfigModal(false)}
+                  className="px-3.5 py-1.5 text-slate-600 hover:bg-slate-100 rounded-lg font-medium"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded-lg font-bold shadow transition-colors"
+                >
+                  Simpan Pengaturan Tugas
                 </button>
               </div>
             </form>
