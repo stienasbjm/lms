@@ -393,7 +393,7 @@ export default function ReportPrintModal({
                 <p className="text-[12pt] font-bold uppercase tracking-wide text-black mt-0.5">
                   BAGIAN ADMINISTRASI AKADEMIK (BAA)
                 </p>
-                <div className="text-[9pt] font-bold leading-tight mt-1.5 space-y-0.5 px-1 text-black">
+                <div className="text-[9pt] font-normal leading-tight mt-1.5 space-y-0.5 px-1 text-black">
                   <div className="flex justify-between items-center">
                     <span>TERAKREDITASI SK. NO. : 501/DE/A.5/AR.10/VII/2023</span>
                     <span>PROGRAM STUDI: AKUNTANSI</span>
