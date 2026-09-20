@@ -376,7 +376,7 @@ export default function ReportPrintModal({
           
           {/* KOP SURAT RESMI LEMBAGA SESUAI FORMAT BAKU STIENAS */}
           <div className="mb-5 font-serif text-black select-none">
-            {/* Bagian Atas: Logo & Header Lembaga */}
+            {/* Bagian Atas: Logo & Header Lembaga (12pt) */}
             <div className="flex items-center gap-4 pb-1">
               <div className="w-24 h-24 shrink-0 flex items-center justify-center">
                 <img 
@@ -385,20 +385,20 @@ export default function ReportPrintModal({
                   className="w-24 h-24 object-contain"
                 />
               </div>
-              <div className="flex-1 text-center pr-2">
-                <h2 className="text-sm sm:text-base font-bold uppercase tracking-wide leading-tight text-black">
+              <div className="flex-1 text-center pr-2 text-[12pt]">
+                <h2 className="text-[12pt] font-bold uppercase tracking-wide leading-tight text-black">
                   YAYASAN PENDIDIKAN BANDARMASIH
                 </h2>
-                <h1 className="text-base sm:text-lg font-black uppercase tracking-tight leading-tight mt-0.5 text-black">
+                <h1 className="text-[12pt] font-black uppercase tracking-tight leading-tight mt-0.5 text-black">
                   SEKOLAH TINGGI ILMU EKONOMI NASIONAL
                 </h1>
-                <h1 className="text-base sm:text-lg font-black uppercase tracking-tight leading-tight text-black">
+                <h1 className="text-[12pt] font-black uppercase tracking-tight leading-tight text-black">
                   (STIENAS) BANJARMASIN
                 </h1>
-                <p className="text-xs sm:text-sm font-bold uppercase tracking-wide text-black mt-0.5">
+                <p className="text-[12pt] font-bold uppercase tracking-wide text-black mt-0.5">
                   BAGIAN ADMINISTRASI AKADEMIK (BAA)
                 </p>
-                <div className="text-[10px] sm:text-[11px] font-bold leading-tight mt-1.5 space-y-0.5 px-1 text-black">
+                <div className="text-[12pt] font-bold leading-tight mt-1 space-y-0.5 px-1 text-black">
                   <div className="flex justify-between items-center">
                     <span>TERAKREDITASI SK. NO. : 501/DE/A.5/AR.10/VII/2023</span>
                     <span>PROGRAM STUDI: AKUNTANSI</span>
@@ -414,8 +414,8 @@ export default function ReportPrintModal({
             {/* Garis Horizontal Pembatas Pertama */}
             <div className="border-t-[1.5px] border-black w-full my-1" />
 
-            {/* Bagian Alamat, Kontak, Email, dan Website */}
-            <div className="text-center text-[10.5px] leading-tight py-0.5 text-black">
+            {/* Bagian Alamat, Kontak, Email, dan Website (10pt) */}
+            <div className="text-center text-[10pt] leading-tight py-0.5 text-black">
               <p>
                 JL. Mayjend.  Soetoyo S No. 126 Kota Banjarmasin, Kalimantan Selatan 70114 Telp. 0511- 4364563
               </p>
@@ -550,43 +550,6 @@ export default function ReportPrintModal({
                     </tfoot>
                   )}
                 </table>
-              </div>
-
-              {/* REKAPITULASI INDEKS PRESTASI & PRESTASI OBE */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 rounded-xl border border-slate-300 bg-slate-50 text-center print:bg-transparent print:border-slate-400">
-                <div>
-                  <div className="text-[10px] text-slate-600 font-semibold uppercase">Total SKS Diambil</div>
-                  <div className="text-base font-black text-slate-900">{totalSks} SKS</div>
-                </div>
-                <div>
-                  <div className="text-[10px] text-slate-600 font-semibold uppercase">Indeks Prestasi Semester (IPS)</div>
-                  <div className="text-base font-black text-brand-900">{ipkSemester} / 4.00</div>
-                </div>
-                <div>
-                  <div className="text-[10px] text-slate-600 font-semibold uppercase">Rata-rata CPMK OBE</div>
-                  <div className="text-base font-black text-emerald-800">{rataKetercapaianCpmk}% (Tuntas)</div>
-                </div>
-                <div>
-                  <div className="text-[10px] text-slate-600 font-semibold uppercase">Beban SKS Maksimal Berikutnya</div>
-                  <div className="text-base font-black text-slate-900">
-                    {parseFloat(ipkSemester) >= 3.0 ? '24 SKS' : parseFloat(ipkSemester) >= 2.5 ? '21 SKS' : '18 SKS'}
-                  </div>
-                </div>
-              </div>
-
-              {/* KETERANGAN KONVERSI NILAI OBE */}
-              <div className="p-2.5 rounded-lg border border-slate-200 text-[9px] text-slate-600 space-y-1">
-                <div className="font-bold text-slate-800 uppercase tracking-wide">Pedoman Konversi Nilai &amp; Mutu Akademik (OBE):</div>
-                <div className="grid grid-cols-4 sm:grid-cols-8 gap-1 text-center font-mono">
-                  <div className="p-1 bg-slate-100 rounded">A : 80-100 (4.00)</div>
-                  <div className="p-1 bg-slate-100 rounded">B+: 75-79 (3.50)</div>
-                  <div className="p-1 bg-slate-100 rounded">B : 70-74 (3.00)</div>
-                  <div className="p-1 bg-slate-100 rounded">C+: 65-69 (2.50)</div>
-                  <div className="p-1 bg-slate-100 rounded">C : 60-64 (2.00)</div>
-                  <div className="p-1 bg-slate-100 rounded">D : 50-59 (1.00)</div>
-                  <div className="p-1 bg-slate-100 rounded">E : 0-49 (0.00)</div>
-                  <div className="p-1 bg-slate-100 rounded">T : Tunda</div>
-                </div>
               </div>
 
               {/* BLOK TANDA TANGAN PENGESAHAN */}
