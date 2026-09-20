@@ -942,110 +942,181 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
               
               {/* Header Pertemuan */}
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-brand-50 text-brand-800 border border-brand-200">
-                        Pertemuan ke-{activeMeeting.pertemuanKe}
+                {/* Baris Atas: Badge Pertemuan, Tipe Evaluasi, & Status untuk Mahasiswa */}
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-brand-50 text-brand-800 border border-brand-200">
+                      Pertemuan ke-{activeMeeting.pertemuanKe}
+                    </span>
+                    {activeMeeting.isExam && (
+                      <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                        Evaluasi Resmi: {activeMeeting.examType}
                       </span>
-                      {activeMeeting.isExam && (
-                        <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
-                          Evaluasi Resmi: {activeMeeting.examType}
-                        </span>
-                      )}
-                    </div>
-                    <h2 className="text-lg font-bold text-slate-900 mt-2">
-                      {activeMeeting.judul}
-                    </h2>
-                    <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                      {activeMeeting.deskripsi}
-                    </p>
-
-                    {/* Indikator Kurikulum OBE (Outcome-Based Education) */}
-                    <div className="mt-3 p-3 bg-indigo-50/80 border border-indigo-200 rounded-xl space-y-1">
-                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-950">
-                        <span className="px-1.5 py-0.5 rounded bg-indigo-200 text-indigo-900 text-[10px] font-mono uppercase">
-                          Kurikulum OBE
-                        </span>
-                        <span>Capaian Pembelajaran (Sub-CPMK):</span>
-                      </div>
-                      <p className="text-xs text-indigo-900 font-medium leading-relaxed">
-                        {activeMeeting.subCpmk || `Sub-CPMK ${activeMeeting.pertemuanKe}: Mahasiswa mampu menganalisis konsep modul ${activeMeeting.pertemuanKe} secara terstruktur dan terstandar.`}
-                      </p>
-                      <div className="text-[10px] text-indigo-700 pt-1 border-t border-indigo-200/60 flex items-center justify-between">
-                        <span>Indikator Asesmen Otentik: {activeMeeting.indikatorObe || 'Rubrik Analitik Kinerja Skala 0–100'}</span>
-                        <span className="font-semibold text-indigo-900">Bobot Evaluasi: Terintegrasi CPL</span>
-                      </div>
-                    </div>
+                    )}
+                    {activeMeeting.tanggal && (
+                      <span className="text-xs text-slate-500 font-medium flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                        <span>{new Date(activeMeeting.tanggal).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                      </span>
+                    )}
                   </div>
 
-                  {canManageClass && isTaActive && (
-                    <div className="flex items-center flex-wrap gap-2 shrink-0">
-                      {/* Toggle Buka / Tutup Sesi Pertemuan */}
-                      <button
-                        type="button"
-                        onClick={handleToggleClassOpen}
-                        title={activeMeeting.isOpen === false ? 'Buka kembali sesi pertemuan ini' : 'Tutup sesi pertemuan ini'}
-                        className={`px-3 py-1.5 border rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-sm ${
-                          activeMeeting.isOpen === false
-                            ? 'bg-rose-50 hover:bg-rose-100 text-rose-900 border-rose-200'
-                            : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border-emerald-200'
-                        }`}
-                      >
-                        {activeMeeting.isOpen === false ? (
-                          <><Lock className="w-3.5 h-3.5 text-rose-600" /><span>Sesi Ditutup</span></>
-                        ) : (
-                          <><Unlock className="w-3.5 h-3.5 text-emerald-600" /><span>Sesi Terbuka</span></>
-                        )}
-                      </button>
-                      {/* Toggle Buka / Tutup Pengumpulan Tugas */}
-                      <button
-                        type="button"
-                        onClick={handleToggleTaskOpen}
-                        title={activeMeeting.isTaskOpen === false ? 'Buka pengumpulan tugas pertemuan ini' : 'Tutup pengumpulan tugas pertemuan ini'}
-                        className={`px-3 py-1.5 border rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-sm ${
-                          activeMeeting.isTaskOpen === false
-                            ? 'bg-rose-50 hover:bg-rose-100 text-rose-900 border-rose-200'
-                            : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border-emerald-200'
-                        }`}
-                      >
-                        {activeMeeting.isTaskOpen === false ? (
-                          <><Lock className="w-3.5 h-3.5 text-rose-600" /><span>Tugas Ditutup</span></>
-                        ) : (
-                          <><Unlock className="w-3.5 h-3.5 text-emerald-600" /><span>Tugas Dibuka</span></>
-                        )}
-                      </button>
-                      {/* Konfigurasi Tugas */}
-                      <button
-                        type="button"
-                        onClick={handleOpenTaskConfig}
-                        className="px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-sm"
-                        title="Atur Tugas & Deadline Pertemuan"
-                      >
-                        <Timer className="w-3.5 h-3.5 text-purple-700" />
-                        <span>Atur Tugas</span>
-                      </button>
-                      {/* Edit judul pertemuan */}
-                      <button
-                        type="button"
-                        onClick={handleOpenEditMeeting}
-                        className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-sm"
-                        title="Ubah Judul Pertemuan & Pokok Bahasan RPS"
-                      >
-                        <Edit3 className="w-3.5 h-3.5 text-amber-700" />
-                        <span>Edit Judul</span>
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Banner sesi ditutup — tampil untuk Mahasiswa */}
+                  {/* Banner status sesi untuk Mahasiswa */}
                   {isMahasiswa && activeMeeting.isOpen === false && (
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 border border-rose-200 rounded-xl text-xs font-bold text-rose-800 shrink-0">
+                    <div className="flex items-center gap-1.5 px-3 py-1 bg-rose-50 border border-rose-200 rounded-xl text-xs font-bold text-rose-800">
                       <Lock className="w-3.5 h-3.5 text-rose-600" />
-                      <span>Sesi Ditutup</span>
+                      <span>Sesi Pertemuan Ditutup</span>
                     </div>
                   )}
                 </div>
+
+                {/* Judul & Deskripsi Pertemuan (Lebar Penuh) */}
+                <div>
+                  <h2 className="text-lg md:text-xl font-bold text-slate-900 leading-snug">
+                    {activeMeeting.judul}
+                  </h2>
+                  <p className="text-xs text-slate-600 mt-1.5 leading-relaxed">
+                    {activeMeeting.deskripsi}
+                  </p>
+                </div>
+
+                {/* Indikator Kurikulum OBE (Outcome-Based Education) - Lebar Penuh */}
+                <div className="p-3.5 bg-indigo-50/80 border border-indigo-200 rounded-xl space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-950">
+                    <span className="px-1.5 py-0.5 rounded bg-indigo-200 text-indigo-900 text-[10px] font-mono uppercase">
+                      Kurikulum OBE
+                    </span>
+                    <span>Capaian Pembelajaran (Sub-CPMK):</span>
+                  </div>
+                  <p className="text-xs text-indigo-900 font-medium leading-relaxed">
+                    {activeMeeting.subCpmk || `Sub-CPMK ${activeMeeting.pertemuanKe}: Mahasiswa mampu menganalisis konsep modul ${activeMeeting.pertemuanKe} secara terstruktur dan terstandar.`}
+                  </p>
+                  <div className="text-[10px] text-indigo-700 pt-1.5 border-t border-indigo-200/60 flex items-center justify-between flex-wrap gap-1">
+                    <span>Indikator Asesmen Otentik: {activeMeeting.indikatorObe || 'Rubrik Analitik Kinerja Skala 0–100'}</span>
+                    <span className="font-semibold text-indigo-900">Bobot Evaluasi: Terintegrasi CPL</span>
+                  </div>
+                </div>
+
+                {/* Panel Kontrol & Aksi Dosen (Tata Letak Responsif: Tidak Menumpuk ke Samping) */}
+                {canManageClass && isTaActive && (
+                  <div className="pt-3 border-t border-slate-100 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-brand-600" />
+                        Panel Kontrol Pertemuan & Tugas {activeMeeting.pertemuanKe}
+                      </span>
+                      <span className="text-[10px] text-slate-400 hidden sm:inline">
+                        Klik kartu aksi untuk mengubah status atau konfigurasi
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                      {/* 1. Toggle Sesi Perkuliahan */}
+                      <button
+                        type="button"
+                        onClick={handleToggleClassOpen}
+                        className={`p-2.5 rounded-xl border text-left flex items-center justify-between gap-2 transition-all shadow-sm hover:shadow ${
+                          activeMeeting.isOpen === false
+                            ? 'bg-rose-50/80 hover:bg-rose-100/90 text-rose-900 border-rose-200'
+                            : 'bg-emerald-50/80 hover:bg-emerald-100/90 text-emerald-900 border-emerald-200'
+                        }`}
+                        title={activeMeeting.isOpen === false ? 'Klik untuk membuka sesi perkuliahan' : 'Klik untuk menutup sesi perkuliahan'}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                            activeMeeting.isOpen === false ? 'bg-rose-200 text-rose-700' : 'bg-emerald-200 text-emerald-700'
+                          }`}>
+                            {activeMeeting.isOpen === false ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+                          </div>
+                          <div>
+                            <div className="text-[10px] font-medium text-slate-500">Sesi Perkuliahan</div>
+                            <div className="text-xs font-bold leading-tight">
+                              {activeMeeting.isOpen === false ? 'Sesi Ditutup' : 'Sesi Dibuka'}
+                            </div>
+                          </div>
+                        </div>
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
+                          activeMeeting.isOpen === false ? 'bg-rose-200 text-rose-800' : 'bg-emerald-200 text-emerald-800'
+                        }`}>
+                          {activeMeeting.isOpen === false ? 'Terkunci' : 'Aktif'}
+                        </span>
+                      </button>
+
+                      {/* 2. Toggle Status Pengumpulan Tugas */}
+                      <button
+                        type="button"
+                        onClick={handleToggleTaskOpen}
+                        className={`p-2.5 rounded-xl border text-left flex items-center justify-between gap-2 transition-all shadow-sm hover:shadow ${
+                          activeMeeting.isTaskOpen === false
+                            ? 'bg-rose-50/80 hover:bg-rose-100/90 text-rose-900 border-rose-200'
+                            : 'bg-emerald-50/80 hover:bg-emerald-100/90 text-emerald-900 border-emerald-200'
+                        }`}
+                        title={activeMeeting.isTaskOpen === false ? 'Klik untuk membuka akses pengumpulan tugas mahasiswa' : 'Klik untuk menutup akses pengumpulan tugas'}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                            activeMeeting.isTaskOpen === false ? 'bg-rose-200 text-rose-700' : 'bg-emerald-200 text-emerald-700'
+                          }`}>
+                            {activeMeeting.isTaskOpen === false ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+                          </div>
+                          <div>
+                            <div className="text-[10px] font-medium text-slate-500">Tugas Mahasiswa</div>
+                            <div className="text-xs font-bold leading-tight">
+                              {activeMeeting.isTaskOpen === false ? 'Tugas Ditutup' : 'Tugas Dibuka'}
+                            </div>
+                          </div>
+                        </div>
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
+                          activeMeeting.isTaskOpen === false ? 'bg-rose-200 text-rose-800' : 'bg-emerald-200 text-emerald-800'
+                        }`}>
+                          {activeMeeting.isTaskOpen === false ? 'Tutup' : 'Buka'}
+                        </span>
+                      </button>
+
+                      {/* 3. Atur Tugas & Deadline */}
+                      <button
+                        type="button"
+                        onClick={handleOpenTaskConfig}
+                        className="p-2.5 rounded-xl border border-purple-200 bg-purple-50/80 hover:bg-purple-100/90 text-purple-900 text-left flex items-center justify-between gap-2 transition-all shadow-sm hover:shadow"
+                        title="Atur Tugas & Jadwal Deadline Pertemuan"
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-lg bg-purple-200 text-purple-700 flex items-center justify-center shrink-0">
+                            <Timer className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <div className="text-[10px] font-medium text-purple-700">Tugas & Deadline</div>
+                            <div className="text-xs font-bold leading-tight">Atur Tugas</div>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-200 text-purple-800 shrink-0">
+                          Atur
+                        </span>
+                      </button>
+
+                      {/* 4. Edit Judul & Pokok Bahasan RPS */}
+                      <button
+                        type="button"
+                        onClick={handleOpenEditMeeting}
+                        className="p-2.5 rounded-xl border border-amber-200 bg-amber-50/80 hover:bg-amber-100/90 text-amber-900 text-left flex items-center justify-between gap-2 transition-all shadow-sm hover:shadow"
+                        title="Ubah Judul Pertemuan & Pokok Bahasan RPS"
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-lg bg-amber-200 text-amber-700 flex items-center justify-center shrink-0">
+                            <Edit3 className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <div className="text-[10px] font-medium text-amber-700">Materi & Pokok Bahasan</div>
+                            <div className="text-xs font-bold leading-tight">Edit Judul & RPS</div>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-200 text-amber-800 shrink-0">
+                          Ubah
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Info Tanggal Pelaksanaan RPS */}
                 {activeMeeting.tanggal && (

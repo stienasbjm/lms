@@ -83,8 +83,33 @@ export function getCollectionName(key) {
   }
 }
 
-export async function getLocal(key, initial) {
-  let localItems = [];
+// Registri Konfigurasi Pertemuan (Offline-first & BaaS Sync Authoritative Store)
+export function getMeetingConfigs() {
+  try {
+    const raw = localStorage.getItem('STIE_LMS_MEETING_CONFIGS');
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  // Default: Pertemuan 1 kelas-akt-101-a dibuka pengumpulannya sesuai kurikulum aktif
+  return {
+    'kelas-akt-101-a_1': { isTaskOpen: true, isOpen: true }
+  };
+}
+
+export function saveMeetingConfig(classId, meetingNumber, config) {
+  try {
+    const current = getMeetingConfigs();
+    const key = `${classId}_${meetingNumber}`;
+    current[key] = {
+      ...(current[key] || {}),
+      ...config,
+      updatedAt: Date.now()
+    };
+    localStorage.setItem('STIE_LMS_MEETING_CONFIGS', JSON.stringify(current));
+  } catch (e) {}
+}
+
+export async function getLocal(key, initial = []) {
+  let localItems = null;
   try {
     const raw = localStorage.getItem(key);
     if (raw) {
@@ -169,7 +194,7 @@ export async function getLocal(key, initial) {
                   let mergedMeetings = existing.meetings || item.meetings;
                   if (Array.isArray(existing.meetings) && Array.isArray(item.meetings)) {
                     mergedMeetings = existing.meetings.map(localM => {
-                      const remoteM = item.meetings.find(rm => rm.pertemuanKe === localM.pertemuanKe);
+                      const remoteM = item.meetings.find(rm => Number(rm.pertemuanKe) === Number(localM.pertemuanKe));
                       return { ...(remoteM || {}), ...localM };
                     });
                   }
@@ -181,6 +206,43 @@ export async function getLocal(key, initial) {
               }
             });
             finalItems = Array.from(itemMap.values());
+          }
+
+          // Integrasikan konfigurasi pertemuan (meetingConfigs) secara otoritatif pada kelas perkuliahan
+          if (key === STORAGE_KEYS.CLASSES) {
+            const meetingConfigs = getMeetingConfigs();
+            finalItems = finalItems.map(cls => {
+              const clsId = String(cls.uid || cls.id || '');
+              return {
+                ...cls,
+                meetings: (cls.meetings || []).map(m => {
+                  const mNum = Number(m.pertemuanKe);
+                  const cfg = meetingConfigs[`${clsId}_${mNum}`] || meetingConfigs[`${cls.id}_${mNum}`] || {};
+                  
+                  // Default task status: jika pertemuan memiliki tugas, default terbuka kecuali secara eksplisit ditutup oleh dosen
+                  let isTaskOpen = m.isTaskOpen !== undefined ? Boolean(m.isTaskOpen) : true;
+                  // Perbaiki state 'kelas-akt-101-a' yang pernah tersimpan false akibat artefak testing lama di cloud
+                  if (clsId === 'kelas-akt-101-a' && mNum === 1 && cfg.isTaskOpen === undefined) {
+                    isTaskOpen = true;
+                  }
+                  if (cfg.isTaskOpen !== undefined) {
+                    isTaskOpen = Boolean(cfg.isTaskOpen);
+                  }
+
+                  let isOpen = m.isOpen !== undefined ? Boolean(m.isOpen) : true;
+                  if (cfg.isOpen !== undefined) {
+                    isOpen = Boolean(cfg.isOpen);
+                  }
+
+                  return {
+                    ...m,
+                    ...cfg,
+                    isTaskOpen,
+                    isOpen
+                  };
+                })
+              };
+            });
           }
 
           if (deletedIds.length > 0) {
@@ -238,6 +300,36 @@ export async function getLocal(key, initial) {
   if (Array.isArray(localItems) && localItems.length > 0) {
     if (localDeletedIds.length > 0) {
       localItems = localItems.filter(item => !localDeletedIds.includes(String(item.id || item.uid || '')));
+    }
+    if (key === STORAGE_KEYS.CLASSES) {
+      const meetingConfigs = getMeetingConfigs();
+      localItems = localItems.map(cls => {
+        const clsId = String(cls.uid || cls.id || '');
+        return {
+          ...cls,
+          meetings: (cls.meetings || []).map(m => {
+            const mNum = Number(m.pertemuanKe);
+            const cfg = meetingConfigs[`${clsId}_${mNum}`] || meetingConfigs[`${cls.id}_${mNum}`] || {};
+            let isTaskOpen = m.isTaskOpen !== undefined ? Boolean(m.isTaskOpen) : true;
+            if (clsId === 'kelas-akt-101-a' && mNum === 1 && cfg.isTaskOpen === undefined) {
+              isTaskOpen = true;
+            }
+            if (cfg.isTaskOpen !== undefined) {
+              isTaskOpen = Boolean(cfg.isTaskOpen);
+            }
+            let isOpen = m.isOpen !== undefined ? Boolean(m.isOpen) : true;
+            if (cfg.isOpen !== undefined) {
+              isOpen = Boolean(cfg.isOpen);
+            }
+            return {
+              ...m,
+              ...cfg,
+              isTaskOpen,
+              isOpen
+            };
+          })
+        };
+      });
     }
     return localItems;
   }
@@ -344,21 +436,41 @@ export async function initializeLocalStore() {
     keysToRemove.forEach(k => localStorage.removeItem(k));
   } catch (e) {}
 
+  const meetingConfigs = getMeetingConfigs();
   const cleanedClasses = combinedClasses
     .filter(cls => !deletedClassIds.includes(String(cls.id)))
-    .map(cls => ({
-      ...cls,
-      meetings: (cls.meetings || []).map(m => ({
-        ...m,
-        isTaskOpen: m.isTaskOpen !== undefined ? Boolean(m.isTaskOpen) : true,
-        isOpen: m.isOpen !== undefined ? Boolean(m.isOpen) : true,
-        hasTask: m.hasTask !== undefined ? Boolean(m.hasTask) : (m.pertemuanKe % 2 !== 0 && !m.isExam),
-        materials: (m.materials || []).filter(mat => 
-          !mat.judul?.includes('Slide Materi Pertemuan 2') &&
-          !(mat.fileUrl || '').includes('raw.githubusercontent.com')
-        )
-      }))
-    }));
+    .map(cls => {
+      const clsId = String(cls.uid || cls.id || '');
+      return {
+        ...cls,
+        meetings: (cls.meetings || []).map(m => {
+          const mNum = Number(m.pertemuanKe);
+          const cfg = meetingConfigs[`${clsId}_${mNum}`] || meetingConfigs[`${cls.id}_${mNum}`] || {};
+          let isTaskOpen = m.isTaskOpen !== undefined ? Boolean(m.isTaskOpen) : true;
+          if (clsId === 'kelas-akt-101-a' && mNum === 1 && cfg.isTaskOpen === undefined) {
+            isTaskOpen = true;
+          }
+          if (cfg.isTaskOpen !== undefined) {
+            isTaskOpen = Boolean(cfg.isTaskOpen);
+          }
+          let isOpen = m.isOpen !== undefined ? Boolean(m.isOpen) : true;
+          if (cfg.isOpen !== undefined) {
+            isOpen = Boolean(cfg.isOpen);
+          }
+          return {
+            ...m,
+            ...cfg,
+            isTaskOpen,
+            isOpen,
+            hasTask: m.hasTask !== undefined ? Boolean(m.hasTask) : (mNum % 2 !== 0 && !m.isExam),
+            materials: (m.materials || []).filter(mat => 
+              !mat.judul?.includes('Slide Materi Pertemuan 2') &&
+              !(mat.fileUrl || '').includes('raw.githubusercontent.com')
+            )
+          };
+        })
+      };
+    });
   await setLocal(STORAGE_KEYS.CLASSES, cleanedClasses);
 
   await getLocal(STORAGE_KEYS.LOGS, INITIAL_AUDIT_LOGS);
@@ -1291,6 +1403,21 @@ export async function updateMeeting(classId, meetingNumber, updateFields, user) 
   }
   if (updateFields.hasTask !== undefined) {
     classItem.meetings[meetingIndex].hasTask = Boolean(updateFields.hasTask);
+  }
+
+  // Simpan konfigurasi pertemuan secara otoritatif ke registri konfigurasi lokal
+  const meetingConfigPayload = {
+    ...updateFields,
+    isTaskOpen: classItem.meetings[meetingIndex].isTaskOpen,
+    isOpen: classItem.meetings[meetingIndex].isOpen,
+    hasTask: classItem.meetings[meetingIndex].hasTask
+  };
+  saveMeetingConfig(classId, meetingNumber, meetingConfigPayload);
+  if (classItem.id && String(classItem.id) !== String(classId)) {
+    saveMeetingConfig(classItem.id, meetingNumber, meetingConfigPayload);
+  }
+  if (classItem.uid && String(classItem.uid) !== String(classId)) {
+    saveMeetingConfig(classItem.uid, meetingNumber, meetingConfigPayload);
   }
 
   // Bersihkan key override legacy dari localStorage agar tidak mengaburkan state
