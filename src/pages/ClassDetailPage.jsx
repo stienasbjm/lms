@@ -1122,7 +1122,7 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                <div className="grid grid-cols-3 gap-2 text-center text-xs">
                   <div className="p-2.5 bg-emerald-50 rounded-xl border border-emerald-100">
                     <div className="text-lg font-bold text-emerald-800">{attendanceCounts.HADIR}</div>
                     <div className="text-[10px] text-emerald-600 uppercase font-semibold">Hadir</div>
@@ -1130,6 +1130,10 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
                   <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-100">
                     <div className="text-lg font-bold text-amber-800">{attendanceCounts.IZIN + attendanceCounts.SAKIT}</div>
                     <div className="text-[10px] text-amber-600 uppercase font-semibold">Izin / Sakit</div>
+                  </div>
+                  <div className="p-2.5 bg-rose-50 rounded-xl border border-rose-100">
+                    <div className="text-lg font-bold text-rose-800">{attendanceCounts.ALPA}</div>
+                    <div className="text-[10px] text-rose-600 uppercase font-semibold">Alpha</div>
                   </div>
                 </div>
               </div>
