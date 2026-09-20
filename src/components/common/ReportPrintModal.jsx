@@ -205,11 +205,11 @@ export default function ReportPrintModal({
               <h3 className="font-bold text-sm text-white flex items-center gap-2">
                 <span>{type === 'KHS' ? 'Cetak Kartu Hasil Studi (KHS)' : 'Cetak Daftar Nilai Akhir Perkuliahan (DPNA)'}</span>
                 <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  Resmi STIE Nasional
+                  Bagian Administrasi Akademik (BAA)
                 </span>
               </h3>
               <p className="text-[11px] text-slate-400">
-                Format dokumen baku siap cetak printer atau simpan sebagai PDF
+                Format dokumen baku Bagian Administrasi Akademik (BAA) siap cetak printer atau simpan sebagai PDF
               </p>
             </div>
           </div>
@@ -374,6 +374,9 @@ export default function ReportPrintModal({
                 <p className="text-[10px] font-bold text-slate-800 uppercase tracking-wider mt-0.5">
                   UPZ STIE NASIONAL BANJARMASIN
                 </p>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-900 mt-0.5">
+                  BAGIAN ADMINISTRASI AKADEMIK (BAA)
+                </p>
                 <div className="text-[9px] font-semibold text-slate-700 leading-tight mt-1 space-y-0.5">
                   <p>TERAKREDITASI SK. NO. : 501/DE/A.5/AR.10/VII/2023 PROGRAM STUDI: AKUNTANSI</p>
                   <p>TERAKREDITASI SK. NO. : 1318/DE/A.5/AR.10/VI/2024 PROGRAM STUDI: MANAJEMEN</p>
@@ -395,6 +398,9 @@ export default function ReportPrintModal({
             <div className="space-y-4">
               {/* JUDUL DOKUMEN */}
               <div className="text-center space-y-0.5">
+                <p className="text-[11px] font-extrabold uppercase tracking-wider text-slate-800">
+                  BAGIAN ADMINISTRASI AKADEMIK (BAA)
+                </p>
                 <h2 className="text-sm sm:text-base font-black uppercase tracking-widest text-slate-950 underline decoration-slate-900 decoration-2 underline-offset-4">
                   Kartu Hasil Studi (KHS) Mahasiswa
                 </h2>
@@ -603,6 +609,9 @@ export default function ReportPrintModal({
             <div className="space-y-4">
               {/* JUDUL DOKUMEN */}
               <div className="text-center space-y-0.5">
+                <p className="text-[11px] font-extrabold uppercase tracking-wider text-slate-800">
+                  BAGIAN ADMINISTRASI AKADEMIK (BAA)
+                </p>
                 <h2 className="text-sm sm:text-base font-black uppercase tracking-widest text-slate-950 underline decoration-slate-900 decoration-2 underline-offset-4">
                   Daftar Peserta & Nilai Akhir (DPNA) OBE
                 </h2>
@@ -752,7 +761,7 @@ export default function ReportPrintModal({
 
           {/* CATATAN RESMI FOOTER */}
           <div className="mt-8 pt-2 border-t border-slate-200 text-[9px] text-slate-400 flex justify-between items-center print:text-slate-500">
-            <span>Dicetak secara otomatis melalui Sistem LMS &amp; Akademik STIE Nasional Banjarmasin. Dokumen ini sah dan diakui secara digital.</span>
+            <span>Dicetak secara otomatis melalui Sistem LMS &amp; Bagian Administrasi Akademik (BAA) STIE Nasional Banjarmasin. Dokumen ini sah dan diakui secara digital.</span>
             <span>Halaman 1 / 1</span>
           </div>
 
