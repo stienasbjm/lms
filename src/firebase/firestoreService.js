@@ -159,12 +159,25 @@ export async function getLocal(key, initial) {
               const id = item.uid || item.id || item.email || item.kodeMk || item.kodeTa;
               if (id) itemMap.set(String(id), item);
             });
-            // Update / gabungkan dengan data dari Firestore
+            // Update / gabungkan dengan data dari Firestore (UTAMAKAN modifikasi lokal terbaru)
             remoteItems.forEach(item => {
               const id = item.uid || item.id || item.email || item.kodeMk || item.kodeTa;
               if (id) {
                 const existing = itemMap.get(String(id));
-                itemMap.set(String(id), { ...(existing || {}), ...item });
+                if (existing) {
+                  // Jika item memiliki array meetings, merge tiap pertemuan agar isTaskOpen, isOpen, dan bahan ajar lokal tidak tertimpa
+                  let mergedMeetings = existing.meetings || item.meetings;
+                  if (Array.isArray(existing.meetings) && Array.isArray(item.meetings)) {
+                    mergedMeetings = existing.meetings.map(localM => {
+                      const remoteM = item.meetings.find(rm => rm.pertemuanKe === localM.pertemuanKe);
+                      return { ...(remoteM || {}), ...localM };
+                    });
+                  }
+                  // Data lokal (existing) berada setelah remote (item) agar perubahan lokal tetap aktif
+                  itemMap.set(String(id), { ...item, ...existing, meetings: mergedMeetings });
+                } else {
+                  itemMap.set(String(id), item);
+                }
               }
             });
             finalItems = Array.from(itemMap.values());
@@ -174,6 +187,27 @@ export async function getLocal(key, initial) {
             finalItems = finalItems.filter(item => {
               const id = String(item.uid || item.id || '');
               return !deletedIds.includes(id);
+            });
+          }
+
+          // Terapkan meeting overrides tersimpan di localStorage agar isTaskOpen & isOpen selalu persist
+          if (key === STORAGE_KEYS.CLASSES) {
+            finalItems = finalItems.map(cls => {
+              if (Array.isArray(cls.meetings)) {
+                const updatedMeetings = cls.meetings.map(m => {
+                  try {
+                    const oKey1 = `STIE_LMS_MEETING_${cls.id}_${m.pertemuanKe}`;
+                    const oKey2 = cls.uid ? `STIE_LMS_MEETING_${cls.uid}_${m.pertemuanKe}` : null;
+                    const rawO = localStorage.getItem(oKey1) || (oKey2 ? localStorage.getItem(oKey2) : null);
+                    if (rawO) {
+                      return { ...m, ...JSON.parse(rawO) };
+                    }
+                  } catch (e) {}
+                  return m;
+                });
+                return { ...cls, meetings: updatedMeetings };
+              }
+              return cls;
             });
           }
 
@@ -225,6 +259,25 @@ export async function getLocal(key, initial) {
   if (Array.isArray(localItems) && localItems.length > 0) {
     if (localDeletedIds.length > 0) {
       localItems = localItems.filter(item => !localDeletedIds.includes(String(item.id || item.uid || '')));
+    }
+    if (key === STORAGE_KEYS.CLASSES) {
+      localItems = localItems.map(cls => {
+        if (Array.isArray(cls.meetings)) {
+          const updatedMeetings = cls.meetings.map(m => {
+            try {
+              const oKey1 = `STIE_LMS_MEETING_${cls.id}_${m.pertemuanKe}`;
+              const oKey2 = cls.uid ? `STIE_LMS_MEETING_${cls.uid}_${m.pertemuanKe}` : null;
+              const rawO = localStorage.getItem(oKey1) || (oKey2 ? localStorage.getItem(oKey2) : null);
+              if (rawO) {
+                return { ...m, ...JSON.parse(rawO) };
+              }
+            } catch (e) {}
+            return m;
+          });
+          return { ...cls, meetings: updatedMeetings };
+        }
+        return cls;
+      });
     }
     return localItems;
   }
@@ -1015,7 +1068,22 @@ export async function getClasses() {
 
 export async function getClassById(classId) {
   const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
-  return list.find(c => c.id === classId) || null;
+  const classItem = list.find(c => String(c.id) === String(classId) || String(c.uid || '') === String(classId)) || null;
+  if (classItem && Array.isArray(classItem.meetings)) {
+    classItem.meetings = classItem.meetings.map(m => {
+      try {
+        const oKey1 = `STIE_LMS_MEETING_${classItem.id}_${m.pertemuanKe}`;
+        const oKey2 = classItem.uid ? `STIE_LMS_MEETING_${classItem.uid}_${m.pertemuanKe}` : null;
+        const oKey3 = `STIE_LMS_MEETING_${classId}_${m.pertemuanKe}`;
+        const rawO = localStorage.getItem(oKey1) || (oKey2 ? localStorage.getItem(oKey2) : null) || localStorage.getItem(oKey3);
+        if (rawO) {
+          return { ...m, ...JSON.parse(rawO) };
+        }
+      } catch (e) {}
+      return m;
+    });
+  }
+  return classItem;
 }
 
 export async function createClass(classData, user) {
@@ -1229,6 +1297,19 @@ export async function updateMeeting(classId, meetingNumber, updateFields, user) 
     ...updateFields
   };
 
+  // Simpan override spesifik meeting ke localStorage agar aman 100% dari overwrite saat refresh
+  try {
+    const oKey1 = `STIE_LMS_MEETING_${classItem.id}_${meetingNumber}`;
+    const oKey2 = `STIE_LMS_MEETING_${classId}_${meetingNumber}`;
+    const prevO = JSON.parse(localStorage.getItem(oKey1) || localStorage.getItem(oKey2) || '{}');
+    const mergedO = JSON.stringify({ ...prevO, ...updateFields });
+    localStorage.setItem(oKey1, mergedO);
+    localStorage.setItem(oKey2, mergedO);
+    if (classItem.uid) {
+      localStorage.setItem(`STIE_LMS_MEETING_${classItem.uid}_${meetingNumber}`, mergedO);
+    }
+  } catch (e) {}
+
   // Simpan ke localStorage terlebih dahulu
   await setLocal(STORAGE_KEYS.CLASSES, list);
 
@@ -1236,7 +1317,7 @@ export async function updateMeeting(classId, meetingNumber, updateFields, user) 
   // (tidak mengandalkan batch write yang bisa tertimpa saat getLocal berikutnya)
   if (isRealFirebaseConfigured() && db) {
     try {
-      const docId = String(classItem.uid || classItem.id);
+      const docId = String(classItem.uid || classItem.id || classId);
       await updateDoc(doc(db, "kelas_kuliah", docId), {
         meetings: classItem.meetings
       }).catch(async () => {
@@ -1672,6 +1753,7 @@ export async function sendClassMessage(classId, messageData, user) {
     id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
     classId,
     senderId: currentUserId,
+    senderEmail: user.email || '',
     senderName: user.name || user.email || 'Pengguna',
     senderRole: user.role || 'MAHASISWA', // 'DOSEN', 'MAHASISWA', 'ADMIN_AKADEMIK', 'SUPER_ADMIN'
     senderAvatar: user.avatarUrl || null,
@@ -1712,17 +1794,17 @@ export async function sendClassMessage(classId, messageData, user) {
 
       await addDoc(collection(db, "kelas_kuliah", classId, "pesan_diskusi"), {
         ...newMessage,
-        serverTimestamp: serverTimestamp()
-      });
-    } catch (err) {
-      console.warn("Firestore sendClassMessage warning:", err);
+        serverTimestamp: new Date().toISOString()
+      }).catch(() => {});
+    } catch (e) {
+      console.warn("Firestore sendClassMessage warning:", e);
     }
   }
 
   // 5. Emit event sinkronisasi
   notifyDataChange(key, updatedMessages);
-  notifyDataChange(STORAGE_KEYS.CLASSES, updatedMessages);
-  notifyDataChange('STIE_LMS_NEW_MESSAGE_NOTIFICATION', { classId, message: newMessage });
+  notifyDataChange(`STIE_LMS_CLASS_MESSAGES_${classId}`, updatedMessages);
+  notifyDataChange('STIE_LMS_NEW_MESSAGE_NOTIFICATION', { classId, newMessage });
 
   return newMessage;
 }
@@ -1737,10 +1819,10 @@ export async function markClassMessagesAsRead(classId, userId) {
   let hasChange = false;
 
   const updatedMessages = existing.map(msg => {
-    const readByList = msg.readBy || [];
-    if (!readByList.includes(userId)) {
+    if (!Array.isArray(msg.readBy)) msg.readBy = [];
+    if (!msg.readBy.includes(userId)) {
       hasChange = true;
-      return { ...msg, readBy: [...readByList, userId] };
+      return { ...msg, readBy: [...msg.readBy, userId] };
     }
     return msg;
   });
@@ -1786,7 +1868,11 @@ export async function editClassMessage(classId, messageId, newText, user) {
   const updatedMessages = existing.map(msg => {
     if (msg.id === messageId) {
       // Hanya pengirim asli yang bisa mengedit
-      if (msg.senderId !== userId) throw new Error('Anda tidak memiliki izin untuk mengedit pesan ini.');
+      const isOwner = msg.senderId === userId || 
+                      String(msg.senderId) === String(user.id) || 
+                      String(msg.senderId) === String(user.uid) ||
+                      (user.email && msg.senderEmail === user.email);
+      if (!isOwner) throw new Error('Anda hanya dapat mengedit pesan yang Anda kirimkan sendiri.');
       return {
         ...msg,
         text: newText.trim(),
@@ -1824,7 +1910,7 @@ export async function editClassMessage(classId, messageId, newText, user) {
 }
 
 /**
- * Hapus/tarik pesan kelas (hanya bisa dilakukan oleh pengirim asli)
+ * Hapus/tarik pesan kelas (oleh pengirim asli atau moderasi Dosen/Admin)
  * Pesan tidak dihapus fisik, melainkan ditandai sebagai deleted (soft delete)
  */
 export async function deleteClassMessage(classId, messageId, user) {
@@ -1832,15 +1918,25 @@ export async function deleteClassMessage(classId, messageId, user) {
   const key = `${CLASS_MESSAGES_KEY_PREFIX}${classId}`;
   const existing = await getClassMessages(classId);
   const userId = user.uid || user.id;
+  const role = (user.role || '').toUpperCase();
+  const canModerate = ['SUPER_ADMIN', 'ADMIN', 'ADMIN_AKADEMIK', 'BAA', 'DOSEN'].includes(role);
 
   const updatedMessages = existing.map(msg => {
     if (msg.id === messageId) {
-      if (msg.senderId !== userId) throw new Error('Anda tidak memiliki izin untuk menghapus pesan ini.');
+      const isOwner = msg.senderId === userId || 
+                      String(msg.senderId) === String(user.id) || 
+                      String(msg.senderId) === String(user.uid) ||
+                      (user.email && msg.senderEmail === user.email);
+      if (!isOwner && !canModerate) {
+        throw new Error('Anda tidak memiliki wewenang untuk menghapus pesan ini.');
+      }
       return {
         ...msg,
         text: '',
         isDeleted: true,
-        deletedAt: new Date().toISOString()
+        deletedAt: new Date().toISOString(),
+        deletedByRole: isOwner ? 'SENDER' : role,
+        deletedByName: user.name || user.email || 'Pengguna'
       };
     }
     return msg;

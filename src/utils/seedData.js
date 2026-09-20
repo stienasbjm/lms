@@ -269,6 +269,8 @@ export function generateDefault16Meetings(namaMk = 'Mata Kuliah') {
         }
       ] : [],
       hasTask: i % 2 !== 0 && !isExam,
+      isOpen: true,
+      isTaskOpen: true,
       taskTitle: i % 2 !== 0 && !isExam ? `Tugas Analisis Studi Kasus OBE Pertemuan ${i}` : '',
       taskDeadline: new Date(Date.now() + i * 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
     });

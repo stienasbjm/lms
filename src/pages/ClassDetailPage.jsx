@@ -79,6 +79,8 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
   const [editingMessageId, setEditingMessageId] = useState(null);
   const [editingText, setEditingText] = useState('');
   const [isDeletingMessageId, setIsDeletingMessageId] = useState(null);
+  // State hover untuk tombol aksi pesan
+  const [hoveredMessageId, setHoveredMessageId] = useState(null);
 
   // Modals state
   const [showUploadMaterialModal, setShowUploadMaterialModal] = useState(false);
@@ -116,7 +118,7 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
     });
     if (!confirmed) return;
     try {
-      // Optimistic update
+      // Optimistic update — UI langsung diperbarui
       setClassData(prev => {
         if (!prev) return prev;
         const updatedMeetings = prev.meetings.map(m =>
@@ -126,9 +128,45 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
       });
       await updateMeeting(classId, activeMeetingNumber, { isOpen: newIsOpen }, user);
       showSuccessToast(`Sesi Pertemuan ${activeMeetingNumber} berhasil ${label}.`);
-      await loadClass(false);
+      // TIDAK memanggil loadClass(false) setelah update — optimistic update sudah cukup
+      // dan loadClass bisa mengembalikan data stale dari Firestore (eventual consistency)
     } catch (err) {
       showErrorAlert('Gagal Mengubah Status Kelas', err.message);
+      await loadClass(false); // Hanya reload saat error untuk rollback
+    }
+  };
+
+  // Handler: Toggle Buka/Tutup Pengumpulan Tugas per pertemuan oleh Dosen
+  const handleToggleTaskOpen = async () => {
+    if (!isTaActive) return showErrorToast('Semester telah ditutup. Tindakan tidak diizinkan.');
+    const currentStatus = activeMeeting.isTaskOpen !== false;
+    const newStatus = !currentStatus;
+    const label = newStatus ? 'DIBUKA' : 'DITUTUP';
+    const confirmed = await showConfirmDialog({
+      title: newStatus ? 'Buka Pengumpulan Tugas?' : 'Tutup Pengumpulan Tugas?',
+      text: newStatus
+        ? `Mahasiswa akan dapat menyematkan dan memperbarui tautan tugas pada Pertemuan ${activeMeetingNumber}.`
+        : `Pengumpulan tugas Pertemuan ${activeMeetingNumber} akan ditutup. Mahasiswa tidak dapat lagi menyematkan atau memperbarui tugas.`,
+      confirmButtonText: `Ya, ${label}`,
+      cancelButtonText: 'Batal',
+      icon: newStatus ? 'success' : 'warning'
+    });
+    if (!confirmed) return;
+
+    // Optimistic update — UI langsung diperbarui seketika
+    setClassData(prev => {
+      if (!prev) return prev;
+      const updatedMeetings = prev.meetings.map(m =>
+        m.pertemuanKe === activeMeetingNumber ? { ...m, isTaskOpen: newStatus } : m
+      );
+      return { ...prev, meetings: updatedMeetings };
+    });
+
+    try {
+      await updateMeeting(classId, activeMeetingNumber, { isTaskOpen: newStatus }, user);
+      showSuccessToast(`Status Pengumpulan Tugas Pertemuan ${activeMeetingNumber} berhasil ${label}!`);
+    } catch (err) {
+      showErrorAlert('Gagal Mengubah Status Tugas', err.message);
       await loadClass(false);
     }
   };
@@ -161,7 +199,7 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
         isTaskOpen: taskConfigForm.isTaskOpen,
         hasTask: taskConfigForm.hasTask
       };
-      // Optimistic update
+      // Optimistic update — UI langsung diperbarui tanpa perlu loadClass
       setClassData(prev => {
         if (!prev) return prev;
         const updatedMeetings = prev.meetings.map(m =>
@@ -172,10 +210,10 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
       setShowTaskConfigModal(false);
       showSuccessToast(`Pengaturan Tugas Pertemuan ${activeMeetingNumber} berhasil disimpan!`);
       await updateMeeting(classId, activeMeetingNumber, updatedFields, user);
-      await loadClass(false);
+      // TIDAK memanggil loadClass(false) — optimistic update sudah menjaga state UI
     } catch (err) {
       showErrorAlert('Gagal Menyimpan Konfigurasi Tugas', err.message);
-      await loadClass(false);
+      await loadClass(false); // Rollback saat error
     }
   };
 
@@ -348,9 +386,9 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
 
   const handleDeleteMessage = async (messageId) => {
     const confirmed = await showConfirmDialog({
-      title: 'Tarik Pesan?',
-      text: 'Pesan akan ditarik dan tidak dapat dibaca oleh siapapun. Lanjutkan?',
-      confirmButtonText: 'Ya, Tarik Pesan',
+      title: 'Hapus Pesan?',
+      text: 'Pesan ini akan dihapus dari riwayat ruang diskusi kelas perkuliahan. Lanjutkan?',
+      confirmButtonText: 'Ya, Hapus Pesan',
       cancelButtonText: 'Batal',
       icon: 'warning'
     });
@@ -359,9 +397,9 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
     try {
       await deleteClassMessage(classId, messageId, user);
       await loadMessages();
-      showSuccessToast('Pesan berhasil ditarik.');
+      showSuccessToast('Pesan berhasil dihapus.');
     } catch (err) {
-      showErrorAlert('Gagal Menarik Pesan', err.message);
+      showErrorAlert('Gagal Menghapus Pesan', err.message);
     } finally {
       setIsDeletingMessageId(null);
     }
@@ -929,6 +967,23 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
                           <><Unlock className="w-3.5 h-3.5 text-emerald-600" /><span>Sesi Terbuka</span></>
                         )}
                       </button>
+                      {/* Toggle Buka / Tutup Pengumpulan Tugas */}
+                      <button
+                        type="button"
+                        onClick={handleToggleTaskOpen}
+                        title={activeMeeting.isTaskOpen === false ? 'Buka pengumpulan tugas pertemuan ini' : 'Tutup pengumpulan tugas pertemuan ini'}
+                        className={`px-3 py-1.5 border rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-sm ${
+                          activeMeeting.isTaskOpen === false
+                            ? 'bg-rose-50 hover:bg-rose-100 text-rose-900 border-rose-200'
+                            : 'bg-teal-50 hover:bg-teal-100 text-teal-900 border-teal-200'
+                        }`}
+                      >
+                        {activeMeeting.isTaskOpen === false ? (
+                          <><Lock className="w-3.5 h-3.5 text-rose-600" /><span>Tugas Ditutup</span></>
+                        ) : (
+                          <><Unlock className="w-3.5 h-3.5 text-teal-600" /><span>Tugas Dibuka</span></>
+                        )}
+                      </button>
                       {/* Konfigurasi Tugas */}
                       <button
                         type="button"
@@ -1140,17 +1195,63 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
 
               {/* Tugas Terstruktur OBE */}
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center flex-wrap gap-2">
                   <div className="flex items-center gap-2 font-bold text-sm text-slate-900">
                     <Award className="w-4 h-4 text-purple-600" />
                     <span>Tugas Pertemuan {activeMeeting.pertemuanKe}</span>
-                  </div>
-                  {(activeMeeting.isTask || activeMeeting.hasTask) && (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800">
-                      Bobot OBE: {activeMeeting.taskWeight || '10%'}
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                      activeMeeting.isTaskOpen === false
+                        ? 'bg-rose-100 text-rose-800 border-rose-300'
+                        : 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                    }`}>
+                      {activeMeeting.isTaskOpen === false ? 'Pengumpulan Ditutup' : 'Pengumpulan Terbuka'}
                     </span>
-                  )}
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {canManageClass && isTaActive && (
+                      <button
+                        type="button"
+                        onClick={handleToggleTaskOpen}
+                        className={`text-xs font-bold px-3 py-1 rounded-xl border flex items-center gap-1.5 transition-colors shadow-sm ${
+                          activeMeeting.isTaskOpen === false
+                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700'
+                            : 'bg-rose-600 hover:bg-rose-700 text-white border-rose-700'
+                        }`}
+                        title={activeMeeting.isTaskOpen === false ? 'Klik untuk membuka akses pengumpulan tugas bagi mahasiswa' : 'Klik untuk menutup akses pengumpulan tugas bagi mahasiswa'}
+                      >
+                        {activeMeeting.isTaskOpen === false ? (
+                          <><Unlock className="w-3.5 h-3.5" /><span>Buka Pengumpulan</span></>
+                        ) : (
+                          <><Lock className="w-3.5 h-3.5" /><span>Tutup Pengumpulan</span></>
+                        )}
+                      </button>
+                    )}
+                    {(activeMeeting.isTask || activeMeeting.hasTask) && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800">
+                        Bobot OBE: {activeMeeting.taskWeight || '10%'}
+                      </span>
+                    )}
+                  </div>
                 </div>
+
+                {/* Banner Status Pengumpulan untuk Dosen */}
+                {canManageClass && activeMeeting.isTaskOpen === false && (
+                  <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-900 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <Lock className="w-4 h-4 text-amber-700 shrink-0" />
+                      <span><strong>Status Pengumpulan Tugas Ditutup.</strong> Mahasiswa tidak dapat mengunggah atau memperbarui link tugas.</span>
+                    </div>
+                    {isTaActive && (
+                      <button
+                        type="button"
+                        onClick={handleToggleTaskOpen}
+                        className="px-2.5 py-1 bg-amber-700 hover:bg-amber-800 text-white rounded-lg text-[11px] font-bold shrink-0 shadow-sm transition-colors"
+                      >
+                        Buka Sekarang
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 <div className="space-y-3">
                   {/* Deskripsi Penugasan Dosen (jika ada instruksi khusus dari dosen) */}
@@ -1474,25 +1575,36 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
               </div>
             ) : (
               classMessages.map((msg) => {
-                const isMyMessage = msg.senderId === user?.uid || msg.senderId === user?.id;
+                const isMyMessage = msg.senderId === user?.uid || 
+                                    msg.senderId === user?.id || 
+                                    String(msg.senderId) === String(user?.id) || 
+                                    String(msg.senderId) === String(user?.uid) ||
+                                    (user?.email && msg.senderEmail === user.email);
                 const isSenderDosen = msg.senderRole === 'DOSEN';
                 const isSenderAdmin = msg.senderRole === 'ADMIN_AKADEMIK' || msg.senderRole === 'SUPER_ADMIN';
+                const isHovered = hoveredMessageId === msg.id;
+                const isEditing = editingMessageId === msg.id;
+                const canModerate = canManageClass;
+                const canDelete = isMyMessage || canModerate;
+                const canEdit = isMyMessage && !msg.isDeleted;
 
                 return (
                   <div
                     key={msg.id}
-                    className={`flex items-start gap-3 ${isMyMessage ? 'flex-row-reverse' : ''}`}
+                    onMouseEnter={() => setHoveredMessageId(msg.id)}
+                    onMouseLeave={() => setHoveredMessageId(null)}
+                    className={`flex items-end gap-2 ${isMyMessage ? 'flex-row-reverse' : ''}`}
                   >
                     {/* Avatar */}
-                    <div className="shrink-0">
+                    <div className="shrink-0 self-end mb-1">
                       {msg.senderAvatar ? (
                         <img
                           src={msg.senderAvatar}
                           alt={msg.senderName}
-                          className="w-9 h-9 rounded-full object-cover border border-slate-300 shadow-sm"
+                          className="w-8 h-8 rounded-full object-cover border border-slate-300 shadow-sm"
                         />
                       ) : (
-                        <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shadow-sm ${
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shadow-sm ${
                           isSenderDosen
                             ? 'bg-blue-800 text-white'
                             : isSenderAdmin
@@ -1504,11 +1616,14 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
                       )}
                     </div>
 
-                    {/* Bubble Pesan + Action Buttons */}
-                    <div className={`relative flex items-start gap-1.5 ${isMyMessage ? 'flex-row-reverse' : ''}`}>
-                      {/* Tombol Edit/Hapus (muncul saat hover, hanya pesan sendiri) */}
-                      {isMyMessage && !msg.isDeleted && editingMessageId !== msg.id && (
-                        <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 self-center transition-opacity shrink-0">
+                    {/* Tombol Aksi Samping (Edit/Hapus) — tampil saat hover dan touch */}
+                    {!msg.isDeleted && !isEditing && (canEdit || canDelete) && (
+                      <div
+                        className={`flex flex-col gap-1 self-center shrink-0 transition-opacity duration-150 ${
+                          isHovered ? 'opacity-100' : 'opacity-60 sm:opacity-0 hover:opacity-100'
+                        }`}
+                      >
+                        {canEdit && (
                           <button
                             type="button"
                             onClick={() => handleStartEdit(msg)}
@@ -1517,104 +1632,141 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
                           >
                             <Edit3 className="w-3.5 h-3.5 text-amber-600" />
                           </button>
+                        )}
+                        {canDelete && (
                           <button
                             type="button"
                             onClick={() => handleDeleteMessage(msg.id)}
                             disabled={isDeletingMessageId === msg.id}
                             className="p-1.5 rounded-lg bg-white border border-slate-200 shadow-sm hover:bg-rose-50 hover:border-rose-300 transition-colors disabled:opacity-50"
-                            title="Tarik pesan"
+                            title={isMyMessage ? "Hapus pesan Anda" : "Hapus pesan (Moderasi Dosen/Admin)"}
                           >
                             {isDeletingMessageId === msg.id
                               ? <Clock className="w-3.5 h-3.5 text-slate-400 animate-spin" />
                               : <Trash2 className="w-3.5 h-3.5 text-rose-600" />
                             }
                           </button>
-                        </div>
-                      )}
+                        )}
+                      </div>
+                    )}
 
-                      {/* Bubble Pesan */}
-                      <div className={`group max-w-xl rounded-2xl p-3.5 shadow-sm text-xs space-y-1 ${
-                        isMyMessage
-                          ? 'bg-brand-800 text-white rounded-tr-none'
-                          : 'bg-white text-slate-800 border border-slate-200 rounded-tl-none'
-                      } ${msg.isDeleted ? 'opacity-60' : ''}`}>
-                        {/* Header bubble */}
-                        <div className={`flex items-center gap-2 pb-1 border-b ${
-                          isMyMessage ? 'border-brand-700/60' : 'border-slate-100'
+                    {/* Bubble Pesan */}
+                    <div className={`max-w-md sm:max-w-xl rounded-2xl p-3.5 shadow-sm text-xs space-y-1 ${
+                      isMyMessage
+                        ? 'bg-brand-800 text-white rounded-br-none'
+                        : 'bg-white text-slate-800 border border-slate-200 rounded-bl-none'
+                    } ${msg.isDeleted ? 'opacity-60' : ''}`}>
+
+                      {/* Header bubble */}
+                      <div className={`flex items-center gap-2 pb-1.5 mb-0.5 border-b ${
+                        isMyMessage ? 'border-brand-700/60' : 'border-slate-100'
+                      }`}>
+                        <span className={`font-bold text-[11px] ${isMyMessage ? 'text-white' : 'text-slate-900'}`}>
+                          {isMyMessage ? 'Anda' : msg.senderName}
+                        </span>
+                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${
+                          isSenderDosen
+                            ? isMyMessage ? 'bg-blue-900/60 text-blue-200 border-blue-400/40' : 'bg-blue-50 text-blue-800 border-blue-200'
+                            : isSenderAdmin
+                            ? isMyMessage ? 'bg-purple-900/60 text-purple-200 border-purple-400/40' : 'bg-purple-50 text-purple-800 border-purple-200'
+                            : isMyMessage ? 'bg-emerald-900/60 text-emerald-200 border-emerald-400/40' : 'bg-emerald-50 text-emerald-800 border-emerald-200'
                         }`}>
-                          <span className={`font-bold ${isMyMessage ? 'text-white' : 'text-slate-900'}`}>
-                            {isMyMessage ? 'Anda' : msg.senderName}
-                          </span>
-                          <span className={`text-[10px] font-semibold px-2 py-0.2 rounded-full border ${
-                            isSenderDosen
-                              ? isMyMessage ? 'bg-blue-900/60 text-blue-200 border-blue-400/40' : 'bg-blue-50 text-blue-800 border-blue-200'
-                              : isSenderAdmin
-                              ? isMyMessage ? 'bg-purple-900/60 text-purple-200 border-purple-400/40' : 'bg-purple-50 text-purple-800 border-purple-200'
-                              : isMyMessage ? 'bg-emerald-900/60 text-emerald-200 border-emerald-400/40' : 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                          }`}>
-                            {isSenderDosen ? 'Dosen' : isSenderAdmin ? 'Admin BAA' : 'Mahasiswa'}
-                          </span>
-                          <span className={`text-[10px] ml-auto ${isMyMessage ? 'text-brand-200' : 'text-slate-400'}`}>
+                          {isSenderDosen ? 'Dosen' : isSenderAdmin ? 'Admin BAA' : 'Mahasiswa'}
+                        </span>
+                        <div className="flex items-center gap-1.5 ml-auto">
+                          <span className={`text-[10px] ${isMyMessage ? 'text-brand-200' : 'text-slate-400'}`}>
                             {new Date(msg.createdAt).toLocaleDateString('id-ID', {
-                              day: 'numeric',
-                              month: 'short',
-                              hour: '2-digit',
-                              minute: '2-digit'
+                              day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
                             })}
                             {msg.isEdited && !msg.isDeleted && (
                               <span className="ml-1 italic opacity-70"> · Diedit</span>
                             )}
                           </span>
-                        </div>
 
-                        {/* Konten pesan: deleted / editing / normal */}
-                        {msg.isDeleted ? (
-                          <p className="leading-relaxed pt-1 font-normal text-xs italic opacity-60 flex items-center gap-1">
-                            <Trash2 className="w-3 h-3" />
-                            Pesan ini telah ditarik.
-                          </p>
-                        ) : editingMessageId === msg.id ? (
-                          <div className="pt-1 space-y-2">
-                            <textarea
-                              rows="3"
-                              value={editingText}
-                              onChange={e => setEditingText(e.target.value)}
-                              onKeyDown={e => {
-                                if (e.key === 'Enter' && !e.shiftKey) {
-                                  e.preventDefault();
-                                  handleSaveEdit(msg.id);
-                                }
-                                if (e.key === 'Escape') {
-                                  setEditingMessageId(null);
-                                  setEditingText('');
-                                }
-                              }}
-                              autoFocus
-                              className="w-full px-2 py-1.5 border border-brand-300 rounded-lg text-xs text-slate-900 outline-none focus:ring-2 focus:ring-brand-500 resize-none bg-white"
-                            />
-                            <div className="flex gap-1.5 justify-end">
-                              <button
-                                type="button"
-                                onClick={() => { setEditingMessageId(null); setEditingText(''); }}
-                                className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-white/20 hover:bg-white/30 text-white border border-white/30 transition-colors"
-                              >
-                                Batal
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleSaveEdit(msg.id)}
-                                className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-white text-brand-800 hover:bg-brand-50 transition-colors"
-                              >
-                                Simpan
-                              </button>
+                          {/* Tombol aksi langsung di header bubble agar mudah dilihat & diakses */}
+                          {!msg.isDeleted && !isEditing && (
+                            <div className="flex items-center gap-1 ml-1">
+                              {canEdit && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartEdit(msg)}
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-bold flex items-center gap-0.5 transition-colors ${
+                                    isMyMessage
+                                      ? 'bg-brand-700/80 hover:bg-brand-600 text-amber-200 border border-brand-500/40'
+                                      : 'bg-slate-100 hover:bg-amber-100 text-amber-700 border border-slate-200'
+                                  }`}
+                                  title="Edit pesan"
+                                >
+                                  <Edit3 className="w-2.5 h-2.5" />
+                                  <span>Edit</span>
+                                </button>
+                              )}
+                              {canDelete && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteMessage(msg.id)}
+                                  disabled={isDeletingMessageId === msg.id}
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-bold flex items-center gap-0.5 transition-colors disabled:opacity-50 ${
+                                    isMyMessage
+                                      ? 'bg-brand-700/80 hover:bg-rose-900/80 text-rose-200 border border-brand-500/40'
+                                      : 'bg-slate-100 hover:bg-rose-100 text-rose-700 border border-slate-200'
+                                  }`}
+                                  title={isMyMessage ? "Hapus pesan Anda" : "Hapus pesan (Moderasi)"}
+                                >
+                                  {isDeletingMessageId === msg.id ? (
+                                    <Clock className="w-2.5 h-2.5 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="w-2.5 h-2.5" />
+                                  )}
+                                  <span>Hapus</span>
+                                </button>
+                              )}
                             </div>
-                          </div>
-                        ) : (
-                          <p className="leading-relaxed whitespace-pre-wrap pt-1 font-normal text-xs">
-                            {msg.text}
-                          </p>
-                        )}
+                          )}
+                        </div>
                       </div>
+
+                      {/* Konten: deleted / sedang diedit / normal */}
+                      {msg.isDeleted ? (
+                        <p className="leading-relaxed pt-0.5 font-normal text-xs italic opacity-60 flex items-center gap-1.5">
+                          <Trash2 className="w-3 h-3 shrink-0 text-rose-400" />
+                          Pesan ini telah dihapus.
+                        </p>
+                      ) : isEditing ? (
+                        <div className="pt-1 space-y-2">
+                          <textarea
+                            rows="3"
+                            value={editingText}
+                            onChange={e => setEditingText(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveEdit(msg.id); }
+                              if (e.key === 'Escape') { setEditingMessageId(null); setEditingText(''); }
+                            }}
+                            autoFocus
+                            className="w-full px-2.5 py-2 border border-brand-300 rounded-lg text-xs text-slate-900 outline-none focus:ring-2 focus:ring-brand-500 resize-none bg-white"
+                          />
+                          <div className="flex gap-1.5 justify-end">
+                            <button
+                              type="button"
+                              onClick={() => { setEditingMessageId(null); setEditingText(''); }}
+                              className="px-3 py-1 text-[11px] font-bold rounded-lg bg-white/20 hover:bg-white/30 text-white border border-white/30 transition-colors"
+                            >
+                              Batal
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSaveEdit(msg.id)}
+                              className="px-3 py-1 text-[11px] font-bold rounded-lg bg-white text-brand-800 hover:bg-brand-50 shadow-sm transition-colors"
+                            >
+                              Simpan
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="leading-relaxed whitespace-pre-wrap pt-0.5 font-normal text-xs">
+                          {msg.text}
+                        </p>
+                      )}
                     </div>
                   </div>
                 );
