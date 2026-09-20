@@ -83,6 +83,30 @@ export function getCollectionName(key) {
   }
 }
 
+export function isUserDeleted(user, deletedList) {
+  if (!user || !Array.isArray(deletedList) || deletedList.length === 0) return false;
+  const uid = user.uid ? String(user.uid) : '';
+  const id = user.id ? String(user.id) : '';
+  const email = user.email ? String(user.email).toLowerCase().trim() : '';
+  const username = user.username ? String(user.username).toLowerCase().trim() : '';
+  const nim = user.nim ? String(user.nim).trim() : '';
+  const nidn = user.nidn ? String(user.nidn).trim() : '';
+
+  // Akun Rabiyah selalu dilindungi dari penghapusan
+  if (uid === 'user-mhs-1789806444944' || id === 'user-mhs-1789806444944' || email === 'raby79279@gmail.com' || nim === '20251111644') {
+    return false;
+  }
+
+  return (
+    (uid && deletedList.includes(uid)) ||
+    (id && deletedList.includes(id)) ||
+    (email && deletedList.includes(email)) ||
+    (username && deletedList.includes(username)) ||
+    (nim && deletedList.includes(nim)) ||
+    (nidn && deletedList.includes(nidn))
+  );
+}
+
 // Registri Konfigurasi Pertemuan (Offline-first & BaaS Sync Authoritative Store)
 export function getMeetingConfigs() {
   try {
@@ -126,7 +150,7 @@ export async function getLocal(key, initial = []) {
       try {
         const snap = await getDocs(collection(db, colName));
         if (!snap.empty) {
-          const remoteItems = snap.docs.map(d => {
+          let remoteItems = snap.docs.map(d => {
             const data = d.data();
             if (!data.uid && !data.id) {
                data.id = d.id;
@@ -160,6 +184,8 @@ export async function getLocal(key, initial = []) {
             });
             // Jangan pernah memfilter akun resmi Rabiyah yang dipulihkan
             deletedIds = deletedIds.filter(id => id !== 'user-mhs-1789806444944' && id !== 'raby79279@gmail.com');
+            // Filter remoteItems terlebih dahulu sebelum digabungkan
+            remoteItems = remoteItems.filter(item => !isUserDeleted(item, deletedIds));
           } else if (key === STORAGE_KEYS.CLASSES) {
             try {
               const delRaw = localStorage.getItem('STIE_LMS_DELETED_CLASSES');
@@ -190,6 +216,10 @@ export async function getLocal(key, initial = []) {
             remoteItems.forEach(item => {
               const id = item.uid || item.id || item.email || item.kodeMk || item.kodeTa;
               if (id) {
+                // Jangan masukkan item pengguna yang telah terhapus
+                if (key === STORAGE_KEYS.USERS && isUserDeleted(item, deletedIds)) {
+                  return;
+                }
                 const existing = itemMap.get(String(id));
                 if (existing) {
                   // Jika item memiliki array meetings, merge tiap pertemuan agar isTaskOpen, isOpen, dan bahan ajar lokal tidak tertimpa
@@ -248,10 +278,14 @@ export async function getLocal(key, initial = []) {
           }
 
           if (deletedIds.length > 0) {
-            finalItems = finalItems.filter(item => {
-              const id = String(item.uid || item.id || '');
-              return !deletedIds.includes(id);
-            });
+            if (key === STORAGE_KEYS.USERS) {
+              finalItems = finalItems.filter(item => !isUserDeleted(item, deletedIds));
+            } else {
+              finalItems = finalItems.filter(item => {
+                const id = String(item.uid || item.id || '');
+                return !deletedIds.includes(id);
+              });
+            }
           }
 
           localStorage.setItem(key, JSON.stringify(finalItems));
@@ -303,7 +337,11 @@ export async function getLocal(key, initial = []) {
 
   if (Array.isArray(localItems) && localItems.length > 0) {
     if (localDeletedIds.length > 0) {
-      localItems = localItems.filter(item => !localDeletedIds.includes(String(item.id || item.uid || '')));
+      if (key === STORAGE_KEYS.USERS) {
+        localItems = localItems.filter(item => !isUserDeleted(item, localDeletedIds));
+      } else {
+        localItems = localItems.filter(item => !localDeletedIds.includes(String(item.id || item.uid || '')));
+      }
     }
     if (key === STORAGE_KEYS.CLASSES) {
       const meetingConfigs = getMeetingConfigs();
@@ -338,7 +376,9 @@ export async function getLocal(key, initial = []) {
     return localItems;
   }
   const cleanInitial = (localDeletedIds.length > 0 && Array.isArray(initial))
-    ? initial.filter(item => !localDeletedIds.includes(String(item.id || item.uid || '')))
+    ? (key === STORAGE_KEYS.USERS 
+        ? initial.filter(item => !isUserDeleted(item, localDeletedIds)) 
+        : initial.filter(item => !localDeletedIds.includes(String(item.id || item.uid || ''))))
     : initial;
   await setLocal(key, cleanInitial);
   return cleanInitial;
@@ -937,60 +977,124 @@ export async function updateUser(uid, userData, currentUser) {
   return updated;
 }
 
-export async function deleteUser(uid, currentUser) {
+export async function deleteUser(targetUserOrUid, currentUser) {
   const list = await getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
-  const target = list.find(u => u.uid === uid || u.id === uid);
-  if (!target) throw new Error("Pengguna tidak ditemukan.");
+  
+  const targetId = typeof targetUserOrUid === 'object' && targetUserOrUid !== null
+    ? (targetUserOrUid.uid || targetUserOrUid.id || targetUserOrUid.email)
+    : targetUserOrUid;
 
-  if (target.uid === currentUser?.uid || target.id === currentUser?.uid) {
+  if (!targetId) {
+    throw new Error("Identitas pengguna yang akan dihapus tidak valid.");
+  }
+
+  // Cari akun target di daftar pengguna lokal ataupun INITIAL_USERS
+  const target = list.find(u => 
+    (u.uid && u.uid === targetId) || 
+    (u.id && u.id === targetId) || 
+    (u.email && u.email.toLowerCase() === String(targetId).toLowerCase())
+  ) || INITIAL_USERS.find(u => 
+    (u.uid && u.uid === targetId) || 
+    (u.id && u.id === targetId) || 
+    (u.email && u.email.toLowerCase() === String(targetId).toLowerCase())
+  ) || (typeof targetUserOrUid === 'object' ? targetUserOrUid : null);
+
+  if (!target) {
+    throw new Error("Pengguna tidak ditemukan dalam sistem.");
+  }
+
+  const effectiveTarget = {
+    ...(typeof targetUserOrUid === 'object' ? targetUserOrUid : {}),
+    ...target
+  };
+
+  const activeUser = currentUser || getCurrentUser();
+  const currentUid = activeUser?.uid || activeUser?.id;
+  const currentEmail = (activeUser?.email || '').toLowerCase().trim();
+  const targetUid = effectiveTarget.uid || effectiveTarget.id;
+  const targetEmail = (effectiveTarget.email || '').toLowerCase().trim();
+
+  // Validasi: Cegah menghapus akun yang sedang dipakai login saat ini
+  if (currentUid && targetUid && String(currentUid) === String(targetUid)) {
+    throw new Error("Anda tidak dapat menghapus akun Anda sendiri.");
+  }
+  if (currentEmail && targetEmail && currentEmail === targetEmail) {
     throw new Error("Anda tidak dapat menghapus akun Anda sendiri.");
   }
 
-  const currentRole = (currentUser?.role || '').toUpperCase();
+  const currentRole = (activeUser?.role || '').toUpperCase();
   const isSuperAdmin = currentRole === 'SUPER_ADMIN' || currentRole === 'ADMIN';
   const isBaa = currentRole === 'ADMIN_AKADEMIK' || currentRole === 'AKADEMIK' || currentRole === 'BAA';
 
   // Proteksi hak akses BAA
   if (isBaa && !isSuperAdmin) {
-    const targetRole = (target.role || '').toUpperCase();
-    if (targetRole === 'SUPER_ADMIN' || targetRole === 'ADMIN_AKADEMIK') {
+    const targetRole = (effectiveTarget.role || '').toUpperCase();
+    if (targetRole === 'SUPER_ADMIN' || targetRole === 'ADMIN_AKADEMIK' || targetRole === 'AKADEMIK' || targetRole === 'BAA') {
       throw new Error("Bagian Akademik (BAA) tidak diizinkan menghapus akun Administrator atau sesama BAA.");
     }
   }
+
+  // Kumpulkan seluruh identitas akun untuk dimasukkan ke daftar terhapus permanen
+  const idsToBlacklist = [
+    effectiveTarget.uid,
+    effectiveTarget.id,
+    targetId,
+    targetEmail,
+    effectiveTarget.username ? String(effectiveTarget.username).toLowerCase().trim() : null,
+    effectiveTarget.nim ? String(effectiveTarget.nim).trim() : null,
+    effectiveTarget.nidn ? String(effectiveTarget.nidn).trim() : null
+  ].filter(Boolean);
 
   // Tandai di STIE_LMS_DELETED_USERS agar tidak dibangkitkan kembali oleh Firestore getLocal
   try {
     const delRaw = localStorage.getItem('STIE_LMS_DELETED_USERS') || '[]';
     const delList = JSON.parse(delRaw);
-    if (!delList.includes(uid)) {
-      delList.push(uid);
-      localStorage.setItem('STIE_LMS_DELETED_USERS', JSON.stringify(delList));
-    }
+    idsToBlacklist.forEach(idKey => {
+      if (!delList.includes(idKey)) {
+        delList.push(idKey);
+      }
+    });
+    localStorage.setItem('STIE_LMS_DELETED_USERS', JSON.stringify(delList));
   } catch (e) {}
 
+  // Direct Firestore deleteUser deleteDoc attempt untuk semua doc id terkait
   if (isRealFirebaseConfigured() && db) {
-    try {
-      await deleteDoc(doc(db, "users", String(uid)));
-    } catch (e) {
-      console.warn("Direct Firestore deleteUser deleteDoc warning:", e);
+    const docIdsToDelete = new Set([
+      effectiveTarget.uid,
+      effectiveTarget.id,
+      String(targetId)
+    ].filter(Boolean));
+
+    for (const docId of docIdsToDelete) {
+      try {
+        await deleteDoc(doc(db, "users", String(docId)));
+      } catch (e) {
+        console.warn(`Direct Firestore deleteUser deleteDoc warning for ${docId}:`, e);
+      }
     }
   }
 
-  const updated = list.filter(u => u.uid !== uid && u.id !== uid);
+  const updated = list.filter(u => !isUserDeleted(u, idsToBlacklist));
   await setLocal(STORAGE_KEYS.USERS, updated);
 
   // Bersihkan juga mahasiswa dari seluruh kelas perkuliahan (enrolledStudents, grades, attendances)
   try {
     const classList = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
     let classModified = false;
+    const userKeys = idsToBlacklist;
     classList.forEach(c => {
-      if (Array.isArray(c.enrolledStudents) && c.enrolledStudents.includes(uid)) {
-        c.enrolledStudents = c.enrolledStudents.filter(id => id !== uid);
-        classModified = true;
+      if (Array.isArray(c.enrolledStudents)) {
+        const originalLen = c.enrolledStudents.length;
+        c.enrolledStudents = c.enrolledStudents.filter(id => !userKeys.includes(id));
+        if (c.enrolledStudents.length !== originalLen) classModified = true;
       }
-      if (c.grades && c.grades[uid]) {
-        delete c.grades[uid];
-        classModified = true;
+      if (c.grades) {
+        userKeys.forEach(k => {
+          if (c.grades[k]) {
+            delete c.grades[k];
+            classModified = true;
+          }
+        });
       }
     });
     if (classModified) {
@@ -1000,11 +1104,14 @@ export async function deleteUser(uid, currentUser) {
     console.warn("Clean classes on deleteUser error:", e);
   }
 
-  await logAudit(
-    currentUser, 
-    'DELETE_USER', 
-    `Menghapus akun: ${target.name} (${target.email} - ${target.role})`
-  );
+  try {
+    await logAudit(
+      activeUser, 
+      'DELETE_USER', 
+      `Menghapus akun: ${effectiveTarget.name || targetEmail} (${effectiveTarget.email || targetEmail} - ${effectiveTarget.role || 'MAHASISWA'})`
+    );
+  } catch (e) {}
+
   return updated;
 }
 

@@ -57,6 +57,7 @@ export default function UserManagementPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showPasswordText, setShowPasswordText] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Form Tambah Akun Baru
   const [createForm, setCreateForm] = useState({
@@ -304,20 +305,34 @@ export default function UserManagementPage() {
       showErrorToast("Anda tidak memiliki wewenang untuk menghapus akun ini.");
       return;
     }
-    if (selectedUser.uid === currentUser?.uid) {
+
+    const targetUid = selectedUser.uid || selectedUser.id;
+    const currentUid = currentUser?.uid || currentUser?.id;
+    const targetEmail = (selectedUser.email || '').toLowerCase().trim();
+    const currentEmail = (currentUser?.email || '').toLowerCase().trim();
+
+    if (currentUid && targetUid && String(currentUid) === String(targetUid)) {
+      showErrorAlert("Aksi Ditolak", "Anda tidak dapat menghapus akun Anda sendiri.");
+      return;
+    }
+    if (currentEmail && targetEmail && currentEmail === targetEmail) {
       showErrorAlert("Aksi Ditolak", "Anda tidak dapat menghapus akun Anda sendiri.");
       return;
     }
 
+    setIsDeleting(true);
+    const deletedUserName = selectedUser.name || selectedUser.email;
     try {
-      await deleteUser(selectedUser.uid, currentUser);
-      setShowManageModal(false);
+      await deleteUser(selectedUser, currentUser);
       setShowDeleteConfirm(false);
+      setShowManageModal(false);
       setSelectedUser(null);
       await loadData();
-      showSuccessAlert("Akun Dihapus", `Akun ${selectedUser.name} telah berhasil dihapus secara permanen.`);
+      showSuccessAlert("Akun Dihapus", `Akun ${deletedUserName} telah berhasil dihapus secara permanen dari sistem.`);
     } catch (err) {
-      showErrorAlert("Gagal Menghapus Akun", err.message);
+      showErrorAlert("Gagal Menghapus Akun", err.message || "Terjadi kesalahan saat menghapus akun.");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -1189,7 +1204,7 @@ export default function UserManagementPage() {
 
               {/* SECTION 5: KONFIRMASI HAPUS AKUN (JIKA DIKLIK) */}
               {showDeleteConfirm && (
-                <div className="p-4 bg-rose-50 border-2 border-rose-300 rounded-2xl space-y-2.5 animate-fadeIn">
+                <div id="delete-confirm-section" className="p-4 bg-rose-50 border-2 border-rose-300 rounded-2xl space-y-2.5 animate-fadeIn">
                   <div className="flex items-start gap-2.5 text-rose-900">
                     <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
                     <div>
@@ -1202,17 +1217,26 @@ export default function UserManagementPage() {
                   <div className="flex justify-end gap-2 pt-1">
                     <button
                       type="button"
+                      disabled={isDeleting}
                       onClick={() => setShowDeleteConfirm(false)}
-                      className="px-3 py-1.5 text-slate-600 bg-white border border-slate-300 rounded-xl font-semibold text-xs hover:bg-slate-50"
+                      className="px-3 py-1.5 text-slate-600 bg-white border border-slate-300 rounded-xl font-semibold text-xs hover:bg-slate-50 disabled:opacity-50"
                     >
                       Batal
                     </button>
                     <button
                       type="button"
+                      disabled={isDeleting}
                       onClick={handleConfirmDelete}
-                      className="px-4 py-1.5 bg-rose-600 text-white rounded-xl font-bold text-xs hover:bg-rose-700 shadow-sm"
+                      className="px-4 py-1.5 bg-rose-600 text-white rounded-xl font-bold text-xs hover:bg-rose-700 shadow-sm disabled:opacity-50 inline-flex items-center gap-1.5"
                     >
-                      Ya, Hapus Akun Ini
+                      {isDeleting ? (
+                        <>
+                          <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                          <span>Menghapus...</span>
+                        </>
+                      ) : (
+                        <span>Ya, Hapus Akun Ini</span>
+                      )}
                     </button>
                   </div>
                 </div>
@@ -1226,7 +1250,13 @@ export default function UserManagementPage() {
                   {!showDeleteConfirm && (
                     <button
                       type="button"
-                      onClick={() => setShowDeleteConfirm(true)}
+                      onClick={() => {
+                        setShowDeleteConfirm(true);
+                        setTimeout(() => {
+                          const el = document.getElementById('delete-confirm-section');
+                          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                        }, 50);
+                      }}
                       className="text-xs text-rose-600 hover:text-rose-800 hover:bg-rose-50 px-3 py-2 rounded-xl border border-rose-200 transition-colors flex items-center gap-1.5 font-semibold"
                     >
                       <Trash2 className="w-3.5 h-3.5" />

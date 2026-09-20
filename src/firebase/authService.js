@@ -137,6 +137,37 @@ export async function loginUser(identifier, password) {
     console.warn("Gagal membaca STIE_LMS_USERS:", e);
   }
 
+  // Filter keluar seluruh akun yang telah dihapus permanen dari sistem
+  try {
+    const delRaw = localStorage.getItem('STIE_LMS_DELETED_USERS');
+    if (delRaw) {
+      const delList = JSON.parse(delRaw);
+      if (Array.isArray(delList) && delList.length > 0) {
+        combinedUsers = combinedUsers.filter(u => {
+          const uid = String(u.uid || '');
+          const id = String(u.id || '');
+          const email = String(u.email || '').toLowerCase().trim();
+          const username = String(u.username || '').toLowerCase().trim();
+          const nim = String(u.nim || '').trim();
+          const nidn = String(u.nidn || '').trim();
+
+          // Rabiyah selalu dilindungi
+          if (uid === 'user-mhs-1789806444944' || id === 'user-mhs-1789806444944' || email === 'raby79279@gmail.com' || nim === '20251111644') {
+            return true;
+          }
+
+          if (uid && delList.includes(uid)) return false;
+          if (id && delList.includes(id)) return false;
+          if (email && delList.includes(email)) return false;
+          if (username && delList.includes(username)) return false;
+          if (nim && delList.includes(nim)) return false;
+          if (nidn && delList.includes(nidn)) return false;
+          return true;
+        });
+      }
+    }
+  } catch (e) {}
+
   // 2. Cari pengguna yang cocok secara tepat (Email, Alias Email, Username, NIM, NIDN, atau kata kunci peran)
   let foundUser = combinedUsers.find(u => 
     (u.email && u.email.toLowerCase() === trimmed) ||
@@ -304,6 +335,25 @@ export async function requestPasswordReset(identifier) {
   } catch (e) {
     console.warn("Gagal membaca pengguna lokal:", e);
   }
+
+  // Filter keluar seluruh akun yang telah terhapus
+  try {
+    const delRaw = localStorage.getItem('STIE_LMS_DELETED_USERS');
+    if (delRaw) {
+      const delList = JSON.parse(delRaw);
+      if (Array.isArray(delList) && delList.length > 0) {
+        combinedUsers = combinedUsers.filter(u => {
+          const uid = String(u.uid || '');
+          const id = String(u.id || '');
+          const email = String(u.email || '').toLowerCase().trim();
+          if (uid && delList.includes(uid)) return false;
+          if (id && delList.includes(id)) return false;
+          if (email && delList.includes(email)) return false;
+          return true;
+        });
+      }
+    }
+  } catch (e) {}
 
   // 2. Cari pengguna berdasarkan Email, Alias, Username, NIM, atau NIDN
   const foundUser = combinedUsers.find(u => 
