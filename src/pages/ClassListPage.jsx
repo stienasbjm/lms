@@ -277,10 +277,28 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
 
     const mk = mks.find(m => m.id === targetClass?.mataKuliahId || m.kodeMk === targetClass?.kodeMk);
     const courseSemester = Number(mk?.semesterDefault || 1);
+    const isProdiMatch = !mk?.prodiId || !user?.prodiId || mk.prodiId === user.prodiId;
+
+    if (!isProdiMatch) {
+      showErrorAlert(
+        "KRS Ditolak (Beda Program Studi)",
+        `Mata kuliah "${targetClass?.namaMk}" dialokasikan khusus untuk program studi lain.`
+      );
+      return;
+    }
+
     if (studentCurrentSemester && studentCurrentSemester < courseSemester) {
       showErrorAlert(
         "KRS Ditolak (Belum Mencapai Semester)",
         `Mata kuliah "${targetClass?.namaMk}" dialokasikan untuk Semester ${courseSemester}. Anda saat ini berada di Semester ${studentCurrentSemester} (Angkatan ${user?.angkatan || '-'}).`
+      );
+      return;
+    }
+
+    if (studentCurrentSemester && studentCurrentSemester > courseSemester) {
+      showErrorAlert(
+        "Pendaftaran Mata Kuliah Mengulang",
+        `Mata kuliah "${targetClass?.namaMk}" (Semester ${courseSemester}) merupakan mata kuliah mengulang dari tahun sebelumnya. Sesuai kebijakan akademik STIE Nasional, pendaftaran mata kuliah mengulang hanya dapat ditambahkan langsung oleh Admin atau Bagian Administrasi Akademik (BAA). Silakan menghubungi loket BAA.`
       );
       return;
     }
@@ -503,6 +521,17 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
 
         </div>
 
+        {/* Notifikasi Kebijakan KRS & Mengulang Mahasiswa */}
+        {isMahasiswa && (
+          <div className="bg-amber-50/80 border border-amber-200/80 rounded-xl p-3 text-[11px] text-amber-900 flex items-start gap-2.5">
+            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div className="leading-relaxed">
+              <strong className="font-bold text-amber-950">Panduan KRS Mandiri Mahasiswa:</strong> Sistem secara otomatis menampilkan paket kelas sesuai Program Studi dan Semester berjalan Anda ({user?.prodiId || 'Prodi Anda'} • Semester {studentCurrentSemester}).
+              Bagi mahasiswa yang bermaksud <strong className="text-purple-900">mengulang mata kuliah tahun sebelumnya</strong> yang belum lulus, pendaftaran kelas <em>wajib dilakukan melalui Admin / Bagian Administrasi Akademik (BAA)</em>.
+            </div>
+          </div>
+        )}
+
         {/* Ringkasan Jumlah Kelas */}
         <div className="text-[11px] text-slate-500 pt-1 border-t border-slate-100 flex items-center justify-between">
           <span>
@@ -562,7 +591,8 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
             const mk = mks.find(m => m.id === cls.mataKuliahId || m.kodeMk === cls.kodeMk);
             const courseSemester = Number(mk?.semesterDefault || 1);
             const isProdiMatch = !mk?.prodiId || !user?.prodiId || mk.prodiId === user.prodiId;
-            const isSemesterEligible = !isMahasiswa || (studentCurrentSemester >= courseSemester);
+            const isRetakeCourse = isMahasiswa && (studentCurrentSemester > courseSemester);
+            const isUnderSemester = isMahasiswa && (studentCurrentSemester < courseSemester);
             const isExactSemester = isMahasiswa && courseSemester === studentCurrentSemester;
 
             return (
@@ -579,11 +609,13 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
                         isExactSemester
                           ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
-                          : isMahasiswa && !isSemesterEligible
+                          : isRetakeCourse
+                          ? 'bg-purple-50 text-purple-800 border-purple-200'
+                          : isUnderSemester
                           ? 'bg-amber-50 text-amber-800 border-amber-200'
                           : 'bg-slate-100 text-slate-700 border-slate-200'
                       }`}>
-                        Semester {courseSemester} {isExactSemester ? '• Paket Anda' : ''}
+                        Semester {courseSemester} {isExactSemester ? '• Paket Anda' : isRetakeCourse ? '• Mengulang' : ''}
                       </span>
                       {isLecturer && (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-100 text-blue-800 border border-blue-200">
@@ -714,13 +746,21 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
                       </div>
                     )
                   ) : isMahasiswa && !isEnrolled ? (
-                    !isSemesterEligible ? (
+                    isUnderSemester ? (
                       <div 
                         className="w-full py-2 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 cursor-not-allowed text-center px-2"
-                        title={`Mata kuliah ini dialokasikan untuk Semester ${courseSemester}. Anda berada di Semester ${studentCurrentSemester}.`}
+                        title={`Mata kuliah ini dialokasikan untuk Semester ${courseSemester}. Anda saat ini berada di Semester ${studentCurrentSemester}.`}
                       >
                         <Lock className="w-3.5 h-3.5 text-amber-700 shrink-0" />
                         <span>Terkunci (Belum Sampai Semester {courseSemester})</span>
+                      </div>
+                    ) : isRetakeCourse ? (
+                      <div 
+                        className="w-full py-2 bg-purple-50 border border-purple-200 text-purple-900 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 cursor-not-allowed text-center px-2"
+                        title={`Mata kuliah "${cls.namaMk}" merupakan mata kuliah Semester ${courseSemester} (Mengulang). Pendaftaran kelas hanya dapat ditambahkan langsung oleh Admin atau BAA.`}
+                      >
+                        <Lock className="w-3.5 h-3.5 text-purple-700 shrink-0" />
+                        <span>Mengulang (Hanya Ditambahkan BAA)</span>
                       </div>
                     ) : !isProdiMatch ? (
                       <div 

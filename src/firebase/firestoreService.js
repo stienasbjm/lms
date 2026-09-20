@@ -1526,3 +1526,127 @@ export async function syncCollectionsToLiveFirestore(onProgress) {
   return { success: true, logs };
 }
 
+/* =========================================================================
+   10. FITUR PESAN & DISKUSI PERKULIAHAN (CLASS MESSAGING & NOTIFICATIONS)
+   ========================================================================= */
+
+const CLASS_MESSAGES_KEY_PREFIX = 'STIE_LMS_CLASS_MESSAGES_';
+
+export async function getClassMessages(classId) {
+  if (!classId) return [];
+  const key = `${CLASS_MESSAGES_KEY_PREFIX}${classId}`;
+  return await getLocal(key, []);
+}
+
+export async function sendClassMessage(classId, messageData, user) {
+  if (!classId || !messageData?.text?.trim() || !user) return null;
+  const key = `${CLASS_MESSAGES_KEY_PREFIX}${classId}`;
+  const existing = await getLocal(key, []);
+
+  const newMessage = {
+    id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+    classId,
+    senderId: user.uid || user.id,
+    senderName: user.name || 'Pengguna',
+    senderRole: user.role, // 'DOSEN', 'MAHASISWA', 'ADMIN_AKADEMIK', 'SUPER_ADMIN'
+    senderAvatar: user.avatarUrl || null,
+    text: messageData.text.trim(),
+    createdAt: new Date().toISOString(),
+    readBy: [user.uid || user.id]
+  };
+
+  const updated = [...existing, newMessage];
+  await setLocal(key, updated);
+
+  // Jika real Firebase live, simpan ke subkoleksi Firestore
+  if (isRealFirebaseConfigured() && db) {
+    try {
+      await addDoc(collection(db, "kelas_kuliah", classId, "pesan_diskusi"), {
+        ...newMessage,
+        serverTimestamp: serverTimestamp()
+      });
+    } catch (err) {
+      console.warn("Firestore sendClassMessage warning:", err);
+    }
+  }
+
+  notifyDataChange(key, updated);
+  notifyDataChange('STIE_LMS_NEW_MESSAGE_NOTIFICATION', { classId, message: newMessage });
+  return newMessage;
+}
+
+export async function markClassMessagesAsRead(classId, userId) {
+  if (!classId || !userId) return;
+  const key = `${CLASS_MESSAGES_KEY_PREFIX}${classId}`;
+  const existing = await getLocal(key, []);
+  let hasChange = false;
+
+  const updated = existing.map(msg => {
+    const readByList = msg.readBy || [];
+    if (!readByList.includes(userId)) {
+      hasChange = true;
+      return { ...msg, readBy: [...readByList, userId] };
+    }
+    return msg;
+  });
+
+  if (hasChange) {
+    await setLocal(key, updated);
+    notifyDataChange(key, updated);
+    notifyDataChange('STIE_LMS_NEW_MESSAGE_NOTIFICATION', { classId, markedReadBy: userId });
+  }
+}
+
+export async function getUserClassNotifications(user, classesList = []) {
+  if (!user || !classesList || classesList.length === 0) return { unreadCount: 0, notifications: [] };
+  const userId = user.uid || user.id;
+
+  // Filter kelas di mana user terdaftar (Mahasiswa: enrolled, Dosen: pengampu/assigned)
+  const myClasses = classesList.filter(cls => {
+    if (user.role === 'MAHASISWA') {
+      return (cls.enrolledStudents || []).includes(userId);
+    }
+    if (user.role === 'DOSEN') {
+      return cls.dosenId === userId || cls.dosenEmail === user.email || cls.namaDosen === user.name;
+    }
+    return true;
+  });
+
+  let allNotifications = [];
+
+  for (const cls of myClasses) {
+    const key = `${CLASS_MESSAGES_KEY_PREFIX}${cls.id}`;
+    let msgs = [];
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw) msgs = JSON.parse(raw);
+    } catch(e) {}
+
+    msgs.forEach(m => {
+      const isUnread = m.senderId !== userId && !(m.readBy || []).includes(userId);
+      allNotifications.push({
+        id: m.id,
+        classId: cls.id,
+        namaMk: cls.namaMk,
+        kodeMk: cls.kodeMk,
+        namaKelas: cls.namaKelas || 'A',
+        senderName: m.senderName,
+        senderRole: m.senderRole,
+        senderAvatar: m.senderAvatar,
+        text: m.text,
+        createdAt: m.createdAt,
+        isUnread
+      });
+    });
+  }
+
+  // Urutkan notifikasi dari yang paling baru
+  allNotifications.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const unreadCount = allNotifications.filter(n => n.isUnread).length;
+
+  return {
+    unreadCount,
+    notifications: allNotifications.slice(0, 15)
+  };
+}
+

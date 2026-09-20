@@ -22,6 +22,7 @@ function MainApp() {
   const [unauthView, setUnauthView] = useState('landing'); // 'landing' | 'login'
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedClassId, setSelectedClassId] = useState(null);
+  const [selectedClassInitialTab, setSelectedClassInitialTab] = useState('MEETINGS');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Jika belum login: tampilkan Landing Page atau Login Page
@@ -36,8 +37,10 @@ function MainApp() {
     setActiveTab(tab);
     if (params.selectedClassId) {
       setSelectedClassId(params.selectedClassId);
+      setSelectedClassInitialTab(params.initialTab || 'MEETINGS');
     } else {
       setSelectedClassId(null);
+      setSelectedClassInitialTab('MEETINGS');
     }
     setIsSidebarOpen(false);
   };
@@ -48,6 +51,7 @@ function MainApp() {
         return (
           <ClassDetailPage 
             classId={selectedClassId} 
+            initialTab={selectedClassInitialTab}
             onBack={() => setSelectedClassId(null)} 
           />
         );
@@ -84,7 +88,10 @@ function MainApp() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans relative">
-      <Header onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} />
+      <Header 
+        onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} 
+        onNavigate={handleNavigate}
+      />
       
       <div className="flex-1 flex max-w-7xl w-full mx-auto">
         <Sidebar 

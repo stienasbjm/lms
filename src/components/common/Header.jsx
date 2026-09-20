@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { 
   LogOut, 
@@ -9,15 +9,52 @@ import {
   Settings, 
   Bell, 
   Sparkles,
-  Menu
+  Menu,
+  MessageSquare
 } from 'lucide-react';
 import FirebaseSettingsModal from './FirebaseSettingsModal';
 import ProfileModal from './ProfileModal';
+import { 
+  getClasses, 
+  getUserClassNotifications, 
+  subscribeToDataSync 
+} from '../../firebase/firestoreService';
 
-export default function Header({ onToggleSidebar }) {
+export default function Header({ onToggleSidebar, onNavigate }) {
   const { user, logout, isFirebaseLive } = useAuth();
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+
+  // Notifikasi Pesan Masuk Kelas untuk Dosen & Mahasiswa
+  const [notificationsData, setNotificationsData] = useState({ unreadCount: 0, notifications: [] });
+  const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
+
+  const fetchNotifications = async () => {
+    if (!user) return;
+    try {
+      const cls = await getClasses();
+      const res = await getUserClassNotifications(user, cls);
+      setNotificationsData(res);
+    } catch (err) {
+      console.error("Error fetching notifications:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchNotifications();
+    const unsubscribe = subscribeToDataSync((detail) => {
+      if (detail && detail.key === 'STIE_LMS_LOGS') return;
+      fetchNotifications();
+    });
+    return () => unsubscribe();
+  }, [user]);
+
+  const handleOpenNotification = (notif) => {
+    setShowNotificationsDropdown(false);
+    if (onNavigate) {
+      onNavigate('classes', { selectedClassId: notif.classId, initialTab: 'MESSAGES' });
+    }
+  };
 
   const getRoleBadge = (role) => {
     switch (role) {
@@ -84,6 +121,114 @@ export default function Header({ onToggleSidebar }) {
                     {isFirebaseLive ? 'Firebase BaaS: Live' : 'Firebase: Demo/Config'}
                   </span>
                 </button>
+              )}
+
+              {/* Notifikasi Pesan Masuk Kelas */}
+              {user && (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowNotificationsDropdown(!showNotificationsDropdown)}
+                    title="Notifikasi Pesan & Diskusi Kelas"
+                    className="relative p-2 text-slate-600 hover:text-brand-900 hover:bg-slate-100 rounded-xl transition-all focus:outline-none"
+                  >
+                    <Bell className="w-5 h-5" />
+                    {notificationsData.unreadCount > 0 && (
+                      <span className="absolute top-1 right-1 min-w-[18px] h-[18px] px-1 bg-rose-600 text-white text-[10px] font-extrabold rounded-full flex items-center justify-center border-2 border-white animate-pulse shadow-sm">
+                        {notificationsData.unreadCount > 9 ? '9+' : notificationsData.unreadCount}
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Popover Dropdown Notifikasi */}
+                  {showNotificationsDropdown && (
+                    <>
+                      <div 
+                        className="fixed inset-0 z-40" 
+                        onClick={() => setShowNotificationsDropdown(false)}
+                      />
+                      <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-slate-200 z-50 overflow-hidden animate-in fade-in zoom-in-95">
+                        <div className="p-3.5 bg-slate-900 text-white flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Bell className="w-4 h-4 text-gold-400" />
+                            <span className="font-bold text-xs sm:text-sm">Notifikasi Pesan Kelas</span>
+                          </div>
+                          {notificationsData.unreadCount > 0 && (
+                            <span className="text-[10px] font-bold bg-rose-600 px-2 py-0.5 rounded-full text-white">
+                              {notificationsData.unreadCount} Baru
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
+                          {notificationsData.notifications.length === 0 ? (
+                            <div className="p-6 text-center text-slate-400 text-xs">
+                              <MessageSquare className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                              Tidak ada notifikasi pesan baru saat ini.
+                            </div>
+                          ) : (
+                            notificationsData.notifications.map((notif) => (
+                              <div
+                                key={notif.id}
+                                onClick={() => handleOpenNotification(notif)}
+                                className={`p-3 sm:p-3.5 hover:bg-slate-50 cursor-pointer transition-colors flex items-start gap-2.5 ${
+                                  notif.isUnread ? 'bg-brand-50/60' : 'bg-white'
+                                }`}
+                              >
+                                <div className="shrink-0 mt-0.5">
+                                  {notif.senderAvatar ? (
+                                    <img 
+                                      src={notif.senderAvatar} 
+                                      alt={notif.senderName} 
+                                      className="w-8 h-8 rounded-full object-cover border border-slate-200 shadow-sm"
+                                    />
+                                  ) : (
+                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-sm ${
+                                      notif.senderRole === 'DOSEN' ? 'bg-blue-800' : 'bg-emerald-800'
+                                    }`}>
+                                      {(notif.senderName || 'U').charAt(0).toUpperCase()}
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between gap-1">
+                                    <span className="text-xs font-bold text-slate-900 truncate">
+                                      {notif.senderName}
+                                    </span>
+                                    <span className="text-[10px] text-slate-400 shrink-0">
+                                      {new Date(notif.createdAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                  </div>
+
+                                  <div className="text-[10px] font-semibold text-brand-800 truncate mt-0.5">
+                                    {notif.namaMk} ({notif.namaKelas})
+                                  </div>
+
+                                  <p className="text-xs text-slate-600 line-clamp-2 mt-0.5 leading-snug">
+                                    {notif.text}
+                                  </p>
+                                </div>
+
+                                {notif.isUnread && (
+                                  <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0 mt-2"></span>
+                                )}
+                              </div>
+                            ))
+                          )}
+                        </div>
+
+                        {notificationsData.notifications.length > 0 && (
+                          <div className="p-2.5 bg-slate-50 border-t border-slate-100 text-center">
+                            <span className="text-[11px] text-slate-500 font-medium">
+                              Klik pesan untuk membuka ruang diskusi kelas
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
               )}
 
               {/* User Profile */}

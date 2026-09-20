@@ -13,7 +13,10 @@ import {
   updateMeetingMedia,
   deleteMeetingMaterial,
   getTahunAkademik,
-  subscribeToDataSync
+  subscribeToDataSync,
+  getClassMessages,
+  sendClassMessage,
+  markClassMessagesAsRead
 } from '../firebase/firestoreService';
 import ManageClassStudentsModal from '../components/classes/ManageClassStudentsModal';
 import { compressImageIfNeeded, formatBytes } from '../utils/imageCompressor';
@@ -42,17 +45,26 @@ import {
   Check,
   Trash2,
   Lock,
-  Edit3
+  Edit3,
+  MessageSquare,
+  Send,
+  MessageCircle
 } from 'lucide-react';
 import { showSuccessAlert, showErrorAlert, showSuccessToast, showErrorToast, showConfirmDialog } from '../utils/alert';
 
-export default function ClassDetailPage({ classId, onBack }) {
+export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETINGS' }) {
   const { user, isAdmin, isBaa, isSuperAdmin, isDosen, isMahasiswa } = useAuth();
   const [classData, setClassData] = useState(null);
   const [allUsers, setAllUsers] = useState([]);
   const [activeMeetingNumber, setActiveMeetingNumber] = useState(1);
+  const [activeMainTab, setActiveMainTab] = useState(initialTab || 'MEETINGS'); // 'MEETINGS' | 'MESSAGES' | 'STUDENTS'
   const [loading, setLoading] = useState(true);
   const [isTaActive, setIsTaActive] = useState(true);
+
+  // Class Messages & Discussion State
+  const [classMessages, setClassMessages] = useState([]);
+  const [newMessageText, setNewMessageText] = useState('');
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
 
   // Modals state
   const [showUploadMaterialModal, setShowUploadMaterialModal] = useState(false);
@@ -107,6 +119,18 @@ export default function ClassDetailPage({ classId, onBack }) {
   const [attendanceRecords, setAttendanceRecords] = useState({});
   const [gradingForm, setGradingForm] = useState({ nilai: 85, feedback: '' });
 
+  const loadMessages = async () => {
+    try {
+      const msgs = await getClassMessages(classId);
+      setClassMessages(msgs);
+      if (activeMainTab === 'MESSAGES' && user?.uid) {
+        await markClassMessagesAsRead(classId, user.uid);
+      }
+    } catch (err) {
+      console.error("Gagal memuat pesan kelas:", err);
+    }
+  };
+
   const loadClass = async (isInitial = false) => {
     if (isInitial && !classData) {
       setLoading(true);
@@ -134,11 +158,22 @@ export default function ClassDetailPage({ classId, onBack }) {
   };
 
   useEffect(() => {
+    if (initialTab) {
+      setActiveMainTab(initialTab);
+    }
+  }, [initialTab]);
+
+  useEffect(() => {
     loadClass(true);
+    loadMessages();
     let debounceTimer = null;
     const unsubscribe = subscribeToDataSync((detail) => {
       // Abaikan sinkronisasi audit logs agar tidak memicu re-render
       if (detail && detail.key === 'STIE_LMS_LOGS') return;
+      if (detail && (detail.key === `STIE_LMS_CLASS_MESSAGES_${classId}` || detail.key === 'STIE_LMS_NEW_MESSAGE_NOTIFICATION')) {
+        loadMessages();
+        return;
+      }
       if (detail && detail.key && !['STIE_LMS_CLASSES', 'STIE_LMS_USERS', 'STIE_LMS_TA'].includes(detail.key)) return;
 
       if (debounceTimer) clearTimeout(debounceTimer);
@@ -151,6 +186,31 @@ export default function ClassDetailPage({ classId, onBack }) {
       unsubscribe();
     };
   }, [classId, user]);
+
+  useEffect(() => {
+    if (activeMainTab === 'MESSAGES' && user?.uid) {
+      markClassMessagesAsRead(classId, user.uid);
+    }
+  }, [activeMainTab, classId, user]);
+
+  const handleSendMessage = async (e) => {
+    e?.preventDefault?.();
+    if (!newMessageText.trim()) return;
+    if (isSendingMessage) return;
+
+    const textToSend = newMessageText.trim();
+    setIsSendingMessage(true);
+    try {
+      setNewMessageText('');
+      await sendClassMessage(classId, { text: textToSend }, user);
+      await loadMessages();
+      showSuccessToast("Pesan berhasil dikirim!");
+    } catch (err) {
+      showErrorAlert("Gagal Mengirim Pesan", err.message);
+    } finally {
+      setIsSendingMessage(false);
+    }
+  };
 
   if ((loading && !classData) || !classData) {
     return (
@@ -525,546 +585,726 @@ export default function ClassDetailPage({ classId, onBack }) {
         </div>
       </div>
 
-      {/* 16 Pertemuan Selector Bar (FR-03.2) */}
-      <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
-        <div className="flex justify-between items-center mb-3">
-          <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-            <Sparkles className="w-4 h-4 text-amber-500" />
-            Navigasi 16 Pertemuan RPS Perkuliahan:
-          </span>
-          <span className="text-xs text-slate-400">
-            Pilih pertemuan untuk melihat bahan ajar & daring
-          </span>
-        </div>
+      {/* Tab Navigasi Utama Kelas: Sesi Pertemuan (1-16) | Pesan & Diskusi Kelas | Peserta Mahasiswa */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
+        <button
+          type="button"
+          onClick={() => setActiveMainTab('MEETINGS')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm ${
+            activeMainTab === 'MEETINGS'
+              ? 'bg-brand-800 text-white ring-2 ring-brand-300'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 hover:text-slate-900'
+          }`}
+        >
+          <BookOpen className="w-4 h-4" />
+          <span>Sesi RPS Pertemuan (1-16)</span>
+        </button>
 
-        {/* 16 Pertemuan Pills */}
-        <div className="grid grid-cols-4 sm:grid-cols-8 xl:grid-cols-16 gap-1.5 sm:gap-2 text-center">
-          {classData.meetings.map(m => {
-            const isSelected = m.pertemuanKe === activeMeetingNumber;
-            const isUTS = m.pertemuanKe === 8;
-            const isUAS = m.pertemuanKe === 16;
+        <button
+          type="button"
+          onClick={() => {
+            setActiveMainTab('MESSAGES');
+            if (user?.uid) markClassMessagesAsRead(classId, user.uid);
+          }}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm relative ${
+            activeMainTab === 'MESSAGES'
+              ? 'bg-brand-800 text-white ring-2 ring-brand-300'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 hover:text-slate-900'
+          }`}
+        >
+          <MessageSquare className="w-4 h-4" />
+          <span>Pesan & Diskusi Kelas</span>
+          {classMessages.length > 0 && (
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+              activeMainTab === 'MESSAGES' ? 'bg-white text-brand-900' : 'bg-brand-100 text-brand-800'
+            }`}>
+              {classMessages.length}
+            </span>
+          )}
+          {unreadClassMessagesCount > 0 && activeMainTab !== 'MESSAGES' && (
+            <span className="w-2.5 h-2.5 rounded-full bg-rose-500 ring-2 ring-white animate-pulse"></span>
+          )}
+        </button>
 
-            return (
-              <button
-                key={m.pertemuanKe}
-                onClick={() => setActiveMeetingNumber(m.pertemuanKe)}
-                className={`py-2 px-1 rounded-xl text-xs font-bold transition-all relative ${
-                  isSelected 
-                    ? 'bg-brand-800 text-white shadow-md scale-105 z-10 ring-2 ring-brand-400' 
-                    : isUTS 
-                    ? 'bg-amber-100 text-amber-900 hover:bg-amber-200 border border-amber-300' 
-                    : isUAS 
-                    ? 'bg-purple-100 text-purple-900 hover:bg-purple-200 border border-purple-300'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200'
-                }`}
-              >
-                <div>P-{m.pertemuanKe}</div>
-                <div className="text-[9px] font-medium tracking-tighter">
-                  {isUTS ? 'UTS' : isUAS ? 'UAS' : 'Materi'}
-                </div>
-              </button>
-            );
-          })}
-        </div>
+        <button
+          type="button"
+          onClick={() => setActiveMainTab('STUDENTS')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm ${
+            activeMainTab === 'STUDENTS'
+              ? 'bg-brand-800 text-white ring-2 ring-brand-300'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 hover:text-slate-900'
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          <span>Peserta Mahasiswa ({enrolledStudentsList.length})</span>
+        </button>
       </div>
 
-      {/* Pertemuan Active View */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* Kolom Kiri: Detail Pertemuan, Video/Daring, & Bahan Ajar */}
-        <div className="lg:col-span-2 space-y-6">
-          
-          {/* Header Pertemuan */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-            <div className="flex justify-between items-start">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-brand-50 text-brand-800 border border-brand-200">
-                    Pertemuan ke-{activeMeeting.pertemuanKe}
-                  </span>
-                  {activeMeeting.isExam && (
-                    <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
-                      Evaluasi Resmi: {activeMeeting.examType}
-                    </span>
-                  )}
-                </div>
-                <h2 className="text-lg font-bold text-slate-900 mt-2">
-                  {activeMeeting.judul}
-                </h2>
-                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                  {activeMeeting.deskripsi}
-                </p>
-
-                {/* Indikator Kurikulum OBE (Outcome-Based Education) */}
-                <div className="mt-3 p-3 bg-indigo-50/80 border border-indigo-200 rounded-xl space-y-1">
-                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-950">
-                    <span className="px-1.5 py-0.5 rounded bg-indigo-200 text-indigo-900 text-[10px] font-mono uppercase">
-                      Kurikulum OBE
-                    </span>
-                    <span>Capaian Pembelajaran (Sub-CPMK):</span>
-                  </div>
-                  <p className="text-xs text-indigo-900 font-medium leading-relaxed">
-                    {activeMeeting.subCpmk || `Sub-CPMK ${activeMeeting.pertemuanKe}: Mahasiswa mampu menganalisis konsep modul ${activeMeeting.pertemuanKe} secara terstruktur dan terstandar.`}
-                  </p>
-                  <div className="text-[10px] text-indigo-700 pt-1 border-t border-indigo-200/60 flex items-center justify-between">
-                    <span>Indikator Asesmen Otentik: {activeMeeting.indikatorObe || 'Rubrik Analitik Kinerja Skala 0–100'}</span>
-                    <span className="font-semibold text-indigo-900">Bobot Evaluasi: Terintegrasi CPL</span>
-                  </div>
-                </div>
-              </div>
-
-              {canManageClass && isTaActive && (
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={handleOpenEditMeeting}
-                    className="px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors"
-                  >
-                    <Edit3 className="w-3.5 h-3.5 text-amber-700" />
-                    <span>Edit Judul Pertemuan</span>
-                  </button>
-
-                  <button
-                    onClick={handleOpenAttendanceModal}
-                    className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow transition-colors"
-                  >
-                    <CheckCircle className="w-4 h-4" />
-                    Presensi Mahasiswa
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Video Pembelajaran / Tautan Konferensi Daring (Google Meet / Zoom / YouTube) */}
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
-              <div className="flex justify-between items-center text-xs font-bold text-slate-700">
-                <span className="flex items-center gap-1.5">
-                  <Video className="w-4 h-4 text-brand-700" />
-                  Media Perkuliahan Daring (Google Meet / Zoom / YouTube)
-                </span>
-                {canManageClass && isTaActive && (
-                  <button
-                    onClick={handleOpenMediaModal}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-brand-800 bg-white border border-brand-200 rounded-lg hover:bg-brand-50 shadow-sm"
-                  >
-                    <Settings className="w-3.5 h-3.5 text-brand-600" />
-                    Atur Media Daring
-                  </button>
-                )}
-              </div>
-
-              {/* Tampilan Media Sesuai Tipe */}
-              {activeMeeting.videoType === 'YOUTUBE' && activeMeeting.videoUrl ? (
-                <div className="space-y-2">
-                  <div className="aspect-video w-full rounded-xl overflow-hidden shadow-inner bg-black">
-                    <iframe 
-                      className="w-full h-full"
-                      src={activeMeeting.videoUrl.includes('embed') ? activeMeeting.videoUrl : "https://www.youtube.com/embed/dQw4w9WgXcQ"} 
-                      title="Video Pembelajaran STIE Nasional"
-                      allowFullScreen
-                    />
-                  </div>
-                  <div className="flex justify-between items-center text-xs text-slate-500">
-                    <span>{activeMeeting.mediaTitle || 'Video Penjelasan Sesi'}</span>
-                    <a 
-                      href={activeMeeting.videoUrl} 
-                      target="_blank" 
-                      rel="noreferrer"
-                      className="text-red-600 font-bold hover:underline flex items-center gap-1"
-                    >
-                      Buka di YouTube <ExternalLink className="w-3 h-3" />
-                    </a>
-                  </div>
-                </div>
-              ) : activeMeeting.videoType === 'ZOOM' ? (
-                <div className="p-4 bg-blue-50/80 rounded-xl border border-blue-200 flex flex-col sm:flex-row justify-between sm:items-center gap-3">
-                  <div>
-                    <div className="font-bold text-xs text-blue-950 flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-blue-600"></span>
-                      Zoom Meeting Terjadwal
-                    </div>
-                    <div className="text-[11px] text-blue-800 mt-0.5 truncate max-w-md">
-                      {activeMeeting.videoUrl || activeMeeting.zoomMeetingUrl || 'https://zoom.us/j/123456789'}
-                    </div>
-                  </div>
-                  <a
-                    href={activeMeeting.videoUrl || activeMeeting.zoomMeetingUrl || 'https://zoom.us/j/123456789'}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs shadow inline-flex items-center justify-center gap-1.5 shrink-0"
-                  >
-                    <Video className="w-4 h-4" />
-                    Gabung Zoom Meeting
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                </div>
-              ) : (
-                /* Default / GOOGLE_MEET */
-                <div className="p-4 bg-emerald-50/80 rounded-xl border border-emerald-200 flex flex-col sm:flex-row justify-between sm:items-center gap-3">
-                  <div>
-                    <div className="font-bold text-xs text-emerald-950 flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
-                      Google Meet Tatap Muka Virtual
-                    </div>
-                    <div className="text-[11px] text-emerald-800 mt-0.5 truncate max-w-md">
-                      {activeMeeting.videoUrl || activeMeeting.googleMeetUrl || 'https://meet.google.com/stie-nas-lms'}
-                    </div>
-                  </div>
-                  <a
-                    href={activeMeeting.videoUrl || activeMeeting.googleMeetUrl || 'https://meet.google.com/stie-nas-lms'}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold text-xs shadow inline-flex items-center justify-center gap-1.5 shrink-0"
-                  >
-                    <Video className="w-4 h-4" />
-                    Buka & Gabung Google Meet
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                </div>
-              )}
-            </div>
-
-            {/* Modul Bahan Ajar (FR-04.1) - Sematkan Link Drive Saja */}
-            <div className="space-y-3 pt-2">
-              <div className="flex justify-between items-center">
-                <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                  <FileText className="w-4 h-4 text-brand-700" />
-                  Bahan Ajar & Modul Kuliah ({(activeMeeting.materials || []).length})
-                </h3>
-                {canManageClass && isTaActive && (
-                  <button
-                    onClick={() => setShowUploadMaterialModal(true)}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-lg text-xs shadow-sm transition-all"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Sematkan Link Drive
-                  </button>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                {(activeMeeting.materials || []).length === 0 ? (
-                  <div className="p-4 border-2 border-dashed border-slate-200 rounded-xl text-center text-xs text-slate-400">
-                    Belum ada link drive bahan ajar yang disematkan untuk pertemuan ini.
-                  </div>
-                ) : (
-                  (activeMeeting.materials || []).map(mat => (
-                    <div 
-                      key={mat.id}
-                      className="p-3 bg-white border border-slate-200 rounded-xl flex justify-between items-center hover:border-brand-300 transition-colors shadow-sm"
-                    >
-                      <div className="flex items-center space-x-3">
-                        <div className="p-2 rounded-lg bg-amber-50 text-amber-700">
-                          <Share2 className="w-5 h-5 text-amber-600" />
-                        </div>
-                        <div>
-                          <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                            <span>{mat.judul}</span>
-                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-300">
-                              Link Drive
-                            </span>
-                          </div>
-                          <div className="text-[11px] text-slate-400">
-                            Tautan Berkas Bahan Ajar Link Drive
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <a
-                          href={mat.fileUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="px-3 py-1 font-bold text-xs rounded-lg transition-colors border flex items-center gap-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300 shadow-sm"
-                        >
-                          <span>Buka Link Drive</span>
-                          <ExternalLink className="w-3 h-3" />
-                        </a>
-
-                        {canManageClass && isTaActive && (
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteMaterial(mat.id)}
-                            title="Hapus materi ini"
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors border border-transparent hover:border-rose-200"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-          </div>
-
-        </div>
-
-        {/* Kolom Kanan: Tugas Pertemuan & Presensi Ter-sinkronisasi */}
-        <div className="space-y-6">
-          
-          {/* Card Presensi Pertemuan Ini (Ter-sinkronisasi dengan Mahasiswa yang Terdata Mengambil MK) */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-            <div className="flex justify-between items-center">
-              <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                <Users className="w-4 h-4 text-brand-700" />
-                Presensi Pertemuan {activeMeetingNumber}
-              </h4>
-              <span className="text-[11px] font-bold text-brand-700 bg-brand-50 px-2 py-0.5 rounded border border-brand-200">
-                {attendedCount} / {enrolledStudentsList.length} Hadir
+      {/* KONTEN TAB 1: 16 PERTEMUAN RPS PERKULIAHAN */}
+      {activeMainTab === 'MEETINGS' && (
+        <>
+          {/* 16 Pertemuan Selector Bar (FR-03.2) */}
+          <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
+            <div className="flex justify-between items-center mb-3">
+              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-amber-500" />
+                Navigasi 16 Pertemuan RPS Perkuliahan:
+              </span>
+              <span className="text-xs text-slate-400">
+                Pilih pertemuan untuk melihat bahan ajar & daring
               </span>
             </div>
 
-            {/* Status Untuk Mahasiswa */}
-            {isMahasiswa && (
-              <div className="p-3 rounded-xl border bg-slate-50 text-xs space-y-1">
-                <div className="text-slate-500 font-medium">Status Kehadiran Anda:</div>
-                <div className="flex items-center gap-1.5">
-                  {existingAttendances[user.uid]?.status === 'HADIR' ? (
-                    <span className="inline-flex items-center gap-1 text-xs font-extrabold text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-lg border border-emerald-300">
-                      <CheckCircle className="w-3.5 h-3.5 text-emerald-600" /> HADIR
-                    </span>
-                  ) : existingAttendances[user.uid]?.status ? (
-                    <span className="inline-flex items-center gap-1 text-xs font-extrabold text-blue-800 bg-blue-100 px-2.5 py-1 rounded-lg border border-blue-300">
-                      {existingAttendances[user.uid].status}
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 text-xs font-bold text-slate-600 bg-slate-200 px-2.5 py-1 rounded-lg">
-                      BELUM TERCATAT
-                    </span>
+            {/* 16 Pertemuan Pills */}
+            <div className="grid grid-cols-4 sm:grid-cols-8 xl:grid-cols-16 gap-1.5 sm:gap-2 text-center">
+              {classData.meetings.map(m => {
+                const isSelected = m.pertemuanKe === activeMeetingNumber;
+                const isUTS = m.pertemuanKe === 8;
+                const isUAS = m.pertemuanKe === 16;
+
+                return (
+                  <button
+                    key={m.pertemuanKe}
+                    onClick={() => setActiveMeetingNumber(m.pertemuanKe)}
+                    className={`py-2 px-1 rounded-xl text-xs font-bold transition-all relative ${
+                      isSelected 
+                        ? 'bg-brand-800 text-white shadow-md scale-105 z-10 ring-2 ring-brand-400' 
+                        : isUTS 
+                        ? 'bg-amber-100 text-amber-900 hover:bg-amber-200 border border-amber-300' 
+                        : isUAS 
+                        ? 'bg-purple-100 text-purple-900 hover:bg-purple-200 border border-purple-300'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200'
+                    }`}
+                  >
+                    <div>P-{m.pertemuanKe}</div>
+                    <div className="text-[9px] font-medium tracking-tighter">
+                      {isUTS ? 'UTS' : isUAS ? 'UAS' : 'Materi'}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Pertemuan Active View */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            {/* Kolom Kiri: Detail Pertemuan, Video/Daring, & Bahan Ajar */}
+            <div className="lg:col-span-2 space-y-6">
+              
+              {/* Header Pertemuan */}
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-brand-50 text-brand-800 border border-brand-200">
+                        Pertemuan ke-{activeMeeting.pertemuanKe}
+                      </span>
+                      {activeMeeting.isExam && (
+                        <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                          Evaluasi Resmi: {activeMeeting.examType}
+                        </span>
+                      )}
+                    </div>
+                    <h2 className="text-lg font-bold text-slate-900 mt-2">
+                      {activeMeeting.judul}
+                    </h2>
+                    <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                      {activeMeeting.deskripsi}
+                    </p>
+
+                    {/* Indikator Kurikulum OBE (Outcome-Based Education) */}
+                    <div className="mt-3 p-3 bg-indigo-50/80 border border-indigo-200 rounded-xl space-y-1">
+                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-950">
+                        <span className="px-1.5 py-0.5 rounded bg-indigo-200 text-indigo-900 text-[10px] font-mono uppercase">
+                          Kurikulum OBE
+                        </span>
+                        <span>Capaian Pembelajaran (Sub-CPMK):</span>
+                      </div>
+                      <p className="text-xs text-indigo-900 font-medium leading-relaxed">
+                        {activeMeeting.subCpmk || `Sub-CPMK ${activeMeeting.pertemuanKe}: Mahasiswa mampu menganalisis konsep modul ${activeMeeting.pertemuanKe} secara terstruktur dan terstandar.`}
+                      </p>
+                      <div className="text-[10px] text-indigo-700 pt-1 border-t border-indigo-200/60 flex items-center justify-between">
+                        <span>Indikator Asesmen Otentik: {activeMeeting.indikatorObe || 'Rubrik Analitik Kinerja Skala 0–100'}</span>
+                        <span className="font-semibold text-indigo-900">Bobot Evaluasi: Terintegrasi CPL</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {canManageClass && isTaActive && (
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={handleOpenEditMeeting}
+                        className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-sm"
+                        title="Ubah Judul Pertemuan & Pokok Bahasan RPS"
+                      >
+                        <Edit3 className="w-3.5 h-3.5 text-amber-700" />
+                        <span>Edit Judul Pertemuan</span>
+                      </button>
+                    </div>
                   )}
                 </div>
-              </div>
-            )}
 
-            {/* Daftar Sinkronisasi Mahasiswa untuk Dosen & Admin */}
-            <div className="space-y-2 pt-1">
-              <div className="text-[11px] font-semibold text-slate-500 flex justify-between items-center">
-                <span>Daftar Mahasiswa Mengambil MK ({enrolledStudentsList.length}):</span>
-                <div className="flex items-center gap-2">
-                  {(isAdmin || isBaa || isSuperAdmin) && (
-                    <button
-                      type="button"
-                      onClick={() => setShowStudentManagementModal(true)}
-                      className="text-brand-700 hover:text-brand-900 font-bold text-xs flex items-center gap-1 hover:underline"
-                      title="Tambah Mahasiswa Manual (Admin & BAA)"
-                    >
-                      <Plus className="w-3 h-3" />
-                      <span>Tambah</span>
-                    </button>
-                  )}
+                {/* Info Tanggal Pelaksanaan RPS */}
+                {activeMeeting.tanggal && (
+                  <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium pt-2 border-t border-slate-100">
+                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Jadwal Pelaksanaan: <strong>{new Date(activeMeeting.tanggal).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</strong></span>
+                  </div>
+                )}
+              </div>
+
+              {/* Video / Daring Section */}
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-2 font-bold text-sm text-slate-900">
+                    <Video className="w-4 h-4 text-rose-600" />
+                    <span>Tatap Muka Daring & Video Interaktif</span>
+                  </div>
                   {canManageClass && isTaActive && (
                     <button
-                      onClick={handleOpenAttendanceModal}
-                      className="text-brand-700 hover:underline font-bold text-xs"
+                      onClick={handleOpenMediaModal}
+                      className="text-xs font-bold text-brand-800 hover:text-brand-950 flex items-center gap-1 bg-brand-50 px-2.5 py-1 rounded-lg border border-brand-200 transition-colors"
                     >
-                      Ubah Presensi
+                      <Settings className="w-3.5 h-3.5" />
+                      Atur Media Daring
                     </button>
                   )}
                 </div>
-              </div>
 
-              <div className="max-h-56 overflow-y-auto divide-y divide-slate-100 pr-1">
-                {enrolledStudentsList.length === 0 ? (
-                  <div className="py-4 text-center text-xs text-slate-400">
-                    Belum ada mahasiswa terdaftar.
+                {activeMeeting.videoUrl ? (
+                  <div className="space-y-3">
+                    <div className="p-4 bg-slate-900 rounded-xl text-white flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+                      <div>
+                        <div className="text-[11px] text-slate-400 uppercase tracking-wider font-mono">
+                          Platform: {activeMeeting.videoType || 'GOOGLE_MEET'}
+                        </div>
+                        <div className="text-sm font-bold mt-0.5">{activeMeeting.mediaTitle || 'Sesi Tatap Muka Daring'}</div>
+                        <div className="text-xs text-slate-300 truncate max-w-md mt-0.5 font-mono">{activeMeeting.videoUrl}</div>
+                      </div>
+                      <a
+                        href={activeMeeting.videoUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-colors shrink-0"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-current" />
+                        Gabung Sesi Perkuliahan
+                      </a>
+                    </div>
                   </div>
                 ) : (
-                  enrolledStudentsList.map(mhs => {
-                    const rec = existingAttendances[mhs.uid];
-                    const status = rec?.status || 'BELUM';
-                    return (
-                      <div key={mhs.uid} className="py-2 flex items-center justify-between text-xs gap-2">
-                        <div className="min-w-0">
-                          <div className="font-bold text-slate-900 truncate">{mhs.name}</div>
-                          <div className="text-[10px] text-slate-400 font-mono">NIM: {mhs.nim || mhs.username}</div>
+                  <div className="p-6 border-2 border-dashed border-slate-200 rounded-xl text-center space-y-2">
+                    <Video className="w-8 h-8 text-slate-300 mx-auto" />
+                    <p className="text-xs text-slate-400">Belum ada tautan tatap muka daring yang disematkan.</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Bahan Ajar & Materi Perkuliahan */}
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-2 font-bold text-sm text-slate-900">
+                    <FileText className="w-4 h-4 text-brand-700" />
+                    <span>Materi & Bahan Ajar (Link Google Drive)</span>
+                  </div>
+                  {canManageClass && isTaActive && (
+                    <button
+                      onClick={() => setShowUploadMaterialModal(true)}
+                      className="px-3 py-1.5 bg-brand-800 hover:bg-brand-900 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Sematkan Link Drive
+                    </button>
+                  )}
+                </div>
+
+                {(activeMeeting.materials || []).length === 0 ? (
+                  <div className="p-6 border-2 border-dashed border-slate-200 rounded-xl text-center space-y-2">
+                    <BookOpen className="w-8 h-8 text-slate-300 mx-auto" />
+                    <p className="text-xs text-slate-400">Belum ada bahan ajar atau materi untuk pertemuan ini.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    {(activeMeeting.materials || []).map(mat => (
+                      <div key={mat.id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-3 hover:bg-slate-100/80 transition-colors">
+                        <div className="flex items-center gap-3 overflow-hidden">
+                          <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                            <LinkIcon className="w-4 h-4" />
+                          </div>
+                          <div className="overflow-hidden">
+                            <div className="font-bold text-xs text-slate-900 truncate">{mat.judul}</div>
+                            <div className="text-[10px] text-slate-400 truncate max-w-sm">{mat.fileUrl}</div>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                            status === 'HADIR' ? 'bg-emerald-50 text-emerald-700 border-emerald-300' :
-                            status === 'IZIN' ? 'bg-blue-50 text-blue-700 border-blue-300' :
-                            status === 'SAKIT' ? 'bg-amber-50 text-amber-700 border-amber-300' :
-                            status === 'ALPHA' ? 'bg-rose-50 text-rose-700 border-rose-300' :
-                            'bg-slate-100 text-slate-500 border-slate-200'
-                          }`}>
-                            {status}
-                          </span>
-                          {(isAdmin || isBaa || isSuperAdmin) && (
+                        <div className="flex items-center gap-2 shrink-0">
+                          <a
+                            href={mat.fileUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="px-3 py-1 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1 shadow-sm transition-colors"
+                          >
+                            <span>Buka Materi</span>
+                            <ExternalLink className="w-3 h-3 text-slate-400" />
+                          </a>
+                          {canManageClass && isTaActive && (
                             <button
-                              type="button"
-                              onClick={() => handleQuickRemoveStudent(mhs)}
-                              title="Keluarkan mahasiswa dari kelas"
-                              className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                              onClick={() => handleDeleteMaterial(mat.id)}
+                              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                              title="Hapus Materi"
                             >
-                              <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           )}
                         </div>
                       </div>
-                    );
-                  })
+                    ))}
+                  </div>
                 )}
               </div>
+
             </div>
 
-            {canManageClass && isTaActive && (
+            {/* Kolom Kanan: Presensi & Tugas */}
+            <div className="space-y-6">
+              
+              {/* Presensi Perkuliahan */}
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-2 font-bold text-sm text-slate-900">
+                    <Clock className="w-4 h-4 text-emerald-600" />
+                    <span>Presensi Pertemuan {activeMeeting.pertemuanKe}</span>
+                  </div>
+                  {canManageClass && isTaActive && (
+                    <button
+                      onClick={handleOpenAttendanceModal}
+                      className="text-xs font-bold text-emerald-800 hover:text-emerald-950 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 transition-colors"
+                    >
+                      Kelola Presensi
+                    </button>
+                  )}
+                </div>
+
+                {isMahasiswa && (
+                  <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between">
+                    <div>
+                      <div className="text-xs text-slate-500">Status Kehadiran Anda</div>
+                      <div className="text-sm font-bold text-slate-900 mt-0.5">
+                        {myAttendanceStatus === 'HADIR' ? 'Hadir Kuliah' :
+                         myAttendanceStatus === 'IZIN' ? 'Izin Resmi' :
+                         myAttendanceStatus === 'SAKIT' ? 'Surat Sakit' :
+                         myAttendanceStatus === 'ALPA' ? 'Tidak Hadir (Alpa)' : 'Belum Ada Presensi'}
+                      </div>
+                    </div>
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                      myAttendanceStatus === 'HADIR' ? 'bg-emerald-100 text-emerald-800' :
+                      myAttendanceStatus === 'IZIN' || myAttendanceStatus === 'SAKIT' ? 'bg-amber-100 text-amber-800' :
+                      myAttendanceStatus === 'ALPA' ? 'bg-rose-100 text-rose-800' : 'bg-slate-200 text-slate-600'
+                    }`}>
+                      {myAttendanceStatus || 'BELUM DICATAT'}
+                    </span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                  <div className="p-2.5 bg-emerald-50 rounded-xl border border-emerald-100">
+                    <div className="text-lg font-bold text-emerald-800">{attendanceCounts.HADIR}</div>
+                    <div className="text-[10px] text-emerald-600 uppercase font-semibold">Hadir</div>
+                  </div>
+                  <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-100">
+                    <div className="text-lg font-bold text-amber-800">{attendanceCounts.IZIN + attendanceCounts.SAKIT}</div>
+                    <div className="text-[10px] text-amber-600 uppercase font-semibold">Izin / Sakit</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Tugas Terstruktur OBE */}
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-2 font-bold text-sm text-slate-900">
+                    <Award className="w-4 h-4 text-purple-600" />
+                    <span>Tugas Pertemuan {activeMeeting.pertemuanKe}</span>
+                  </div>
+                  {activeMeeting.isTask && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800">
+                      Bobot OBE: {activeMeeting.taskWeight || '10%'}
+                    </span>
+                  )}
+                </div>
+
+                {activeMeeting.isTask ? (
+                  <div className="space-y-3">
+                    <div className="p-3 bg-purple-50/60 border border-purple-200 rounded-xl">
+                      <div className="font-bold text-xs text-purple-950">{activeMeeting.taskTitle}</div>
+                      <div className="text-xs text-purple-900 mt-1 leading-relaxed whitespace-pre-wrap">{activeMeeting.taskDesc}</div>
+                      {activeMeeting.taskDeadline && (
+                        <div className="text-[11px] text-purple-800 font-semibold mt-2 pt-2 border-t border-purple-200 flex items-center gap-1">
+                          <Clock className="w-3.5 h-3.5 text-purple-600" />
+                          <span>Batas Akhir: {new Date(activeMeeting.taskDeadline).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Pengumpulan Tugas Mahasiswa */}
+                    {isMahasiswa && (
+                      <div className="p-4 border border-slate-200 rounded-xl space-y-2 bg-slate-50">
+                        <div className="text-xs font-bold text-slate-800">Status Tugas Anda</div>
+                        {mySubmission ? (
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between text-xs">
+                              <span>Dokumen: <strong>{mySubmission.fileName}</strong></span>
+                              {mySubmission.fileUrl && (
+                                <a
+                                  href={mySubmission.fileUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-[10px] font-bold shadow-sm"
+                                >
+                                  <span>Buka Link Tugas</span>
+                                  <ExternalLink className="w-3 h-3" />
+                                </a>
+                              )}
+                            </div>
+                            {mySubmission.catatan && (
+                              <p className="text-[11px] text-emerald-800 italic bg-emerald-100/40 p-2 rounded-lg">
+                                Catatan Anda: "{mySubmission.catatan}"
+                              </p>
+                            )}
+                            {mySubmission.nilai !== undefined ? (
+                              <div className="p-2 bg-white rounded-lg border border-emerald-300 mt-2">
+                                <span className="text-[11px] text-slate-500 block">Nilai Dosen:</span>
+                                <span className="text-lg font-extrabold text-emerald-700">{mySubmission.nilai} / 100</span>
+                                {mySubmission.catatanDosen && (
+                                  <p className="text-[11px] text-slate-600 mt-1 italic">
+                                    "{mySubmission.catatanDosen}"
+                                  </p>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="text-[11px] text-slate-500 italic">Menunggu penilaian Dosen.</div>
+                            )}
+                          </div>
+                        ) : (
+                          isTaActive ? (
+                            <button
+                              onClick={() => setShowTaskSubmitModal(true)}
+                              className="w-full py-2.5 bg-brand-800 hover:bg-brand-900 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow transition-colors"
+                            >
+                              <Share2 className="w-4 h-4" />
+                              Sematkan Link Tugas Mahasiswa
+                            </button>
+                          ) : (
+                            <div className="text-center p-3 bg-slate-100 rounded-xl text-slate-500 text-xs font-medium border border-slate-200">
+                              Semester telah ditutup. Tidak dapat mengumpulkan tugas.
+                            </div>
+                          )
+                        )}
+                      </div>
+                    )}
+
+                    {/* Daftar Pengumpulan Mahasiswa untuk Dosen/Admin */}
+                    {canManageClass && (
+                      <div className="pt-2 space-y-2">
+                        <div className="text-xs font-semibold text-slate-700 flex justify-between">
+                          <span>Mahasiswa Mengumpulkan:</span>
+                          <span>{Object.keys(activeMeeting.submissions || {}).length} Orang</span>
+                        </div>
+
+                        <div className="max-h-60 overflow-y-auto space-y-2">
+                          {Object.values(activeMeeting.submissions || {}).map(sub => (
+                            <div key={sub.mahasiswaId} className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs flex justify-between items-center gap-2">
+                              <div>
+                                <div className="font-bold text-slate-900">{sub.mahasiswaName}</div>
+                                <div className="text-[10px] text-slate-400">NIM: {sub.nim}</div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {sub.fileUrl && (
+                                  <a
+                                    href={sub.fileUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors"
+                                  >
+                                    <span>Buka Link Tugas</span>
+                                    <ExternalLink className="w-3 h-3" />
+                                  </a>
+                                )}
+                                {sub.nilai !== undefined ? (
+                                  <button
+                                    onClick={() => {
+                                      if (!isTaActive) return showErrorToast("Semester ditutup, tidak dapat mengubah nilai.");
+                                      setShowGradingModal(sub);
+                                      setGradingForm({ nilai: sub.nilai, feedback: sub.catatanDosen || '' });
+                                    }}
+                                    className="px-2 py-1 bg-emerald-100 text-emerald-800 rounded font-bold text-xs"
+                                  >
+                                    Nilai: {sub.nilai}
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => {
+                                      if (!isTaActive) return showErrorToast("Semester ditutup, tidak dapat mengubah nilai.");
+                                      setShowGradingModal(sub);
+                                      setGradingForm({ nilai: 85, feedback: '' });
+                                    }}
+                                    className="px-2.5 py-1 bg-brand-800 text-white rounded font-bold text-xs hover:bg-brand-900"
+                                  >
+                                    Beri Nilai
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                  </div>
+                ) : (
+                  <div className="p-4 border-2 border-dashed border-slate-200 rounded-xl text-center text-xs text-slate-400">
+                    Tidak ada penugasan terstruktur untuk pertemuan ini.
+                  </div>
+                )}
+              </div>
+
+            </div>
+
+          </div>
+        </>
+      )}
+
+      {/* KONTEN TAB 2: PESAN & DISKUSI KELAS (DOSEN & MAHASISWA) */}
+      {activeMainTab === 'MESSAGES' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col min-h-[580px]">
+          {/* Header Ruang Pesan */}
+          <div className="p-4 sm:p-5 bg-gradient-to-r from-brand-900 to-slate-900 text-white flex flex-wrap items-center justify-between gap-3 border-b border-brand-800">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center border border-white/20 text-gold-400 shrink-0 shadow-inner">
+                <MessageSquare className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+                  <span>Pesan & Diskusi Perkuliahan</span>
+                  <span className="text-[11px] font-medium bg-white/20 text-white px-2 py-0.5 rounded-full">
+                    {classData.namaMk} ({classData.namaKelas})
+                  </span>
+                </h3>
+                <p className="text-[11px] sm:text-xs text-slate-300">
+                  Dosen Pengampu: <strong className="text-white">{classData.namaDosen}</strong> • Mahasiswa Terdaftar: <strong className="text-white">{enrolledStudentsList.length} Orang</strong>
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                Saluran Diskusi Aktif
+              </span>
+            </div>
+          </div>
+
+          {/* List Pesan */}
+          <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4 max-h-[480px] bg-slate-50/50">
+            {classMessages.length === 0 ? (
+              <div className="text-center py-16 px-4 space-y-3">
+                <div className="w-14 h-14 rounded-2xl bg-brand-50 text-brand-800 border border-brand-200 flex items-center justify-center mx-auto shadow-sm">
+                  <MessageCircle className="w-7 h-7" />
+                </div>
+                <h4 className="font-bold text-sm sm:text-base text-slate-800">
+                  Belum Ada Pesan di Kelas Ini
+                </h4>
+                <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
+                  Ruang ini disediakan untuk komunikasi dan diskusi perkuliahan antara Dosen Pengampu dan Mahasiswa terdaftar. Tulis pesan atau pertanyaan pertama untuk memulai percakapan!
+                </p>
+              </div>
+            ) : (
+              classMessages.map((msg) => {
+                const isMyMessage = msg.senderId === user?.uid || msg.senderId === user?.id;
+                const isSenderDosen = msg.senderRole === 'DOSEN';
+                const isSenderAdmin = msg.senderRole === 'ADMIN_AKADEMIK' || msg.senderRole === 'SUPER_ADMIN';
+
+                return (
+                  <div
+                    key={msg.id}
+                    className={`flex items-start gap-3 ${isMyMessage ? 'flex-row-reverse' : ''}`}
+                  >
+                    {/* Avatar */}
+                    <div className="shrink-0">
+                      {msg.senderAvatar ? (
+                        <img
+                          src={msg.senderAvatar}
+                          alt={msg.senderName}
+                          className="w-9 h-9 rounded-full object-cover border border-slate-300 shadow-sm"
+                        />
+                      ) : (
+                        <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shadow-sm ${
+                          isSenderDosen
+                            ? 'bg-blue-800 text-white'
+                            : isSenderAdmin
+                            ? 'bg-purple-800 text-white'
+                            : 'bg-emerald-800 text-white'
+                        }`}>
+                          {(msg.senderName || 'U').charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Bubble Pesan */}
+                    <div className={`max-w-xl rounded-2xl p-3.5 shadow-sm text-xs space-y-1 ${
+                      isMyMessage
+                        ? 'bg-brand-800 text-white rounded-tr-none'
+                        : 'bg-white text-slate-800 border border-slate-200 rounded-tl-none'
+                    }`}>
+                      <div className={`flex items-center gap-2 pb-1 border-b ${
+                        isMyMessage ? 'border-brand-700/60' : 'border-slate-100'
+                      }`}>
+                        <span className={`font-bold ${isMyMessage ? 'text-white' : 'text-slate-900'}`}>
+                          {isMyMessage ? 'Anda' : msg.senderName}
+                        </span>
+                        <span className={`text-[10px] font-semibold px-2 py-0.2 rounded-full border ${
+                          isSenderDosen
+                            ? isMyMessage ? 'bg-blue-900/60 text-blue-200 border-blue-400/40' : 'bg-blue-50 text-blue-800 border-blue-200'
+                            : isSenderAdmin
+                            ? isMyMessage ? 'bg-purple-900/60 text-purple-200 border-purple-400/40' : 'bg-purple-50 text-purple-800 border-purple-200'
+                            : isMyMessage ? 'bg-emerald-900/60 text-emerald-200 border-emerald-400/40' : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        }`}>
+                          {isSenderDosen ? 'Dosen' : isSenderAdmin ? 'Admin BAA' : 'Mahasiswa'}
+                        </span>
+                        <span className={`text-[10px] ml-auto ${isMyMessage ? 'text-brand-200' : 'text-slate-400'}`}>
+                          {new Date(msg.createdAt).toLocaleDateString('id-ID', {
+                            day: 'numeric',
+                            month: 'short',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </span>
+                      </div>
+                      <p className="leading-relaxed whitespace-pre-wrap pt-1 font-normal text-xs">
+                        {msg.text}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Form Kirim Pesan */}
+          <div className="p-4 bg-white border-t border-slate-200">
+            <form onSubmit={handleSendMessage} className="space-y-2">
+              <div className="flex items-end gap-2">
+                <textarea
+                  rows="2"
+                  value={newMessageText}
+                  onChange={(e) => setNewMessageText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSendMessage();
+                    }
+                  }}
+                  placeholder="Tulis pesan atau pertanyaan diskusi kelas... (Tekan Enter untuk kirim, Shift+Enter untuk baris baru)"
+                  className="flex-1 p-3 border border-slate-300 rounded-xl text-xs outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-all resize-none leading-relaxed"
+                />
+                <button
+                  type="submit"
+                  disabled={!newMessageText.trim() || isSendingMessage}
+                  className="px-5 py-3 bg-brand-800 hover:bg-brand-900 disabled:bg-slate-300 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow transition-all shrink-0 h-[46px]"
+                >
+                  {isSendingMessage ? (
+                    <Clock className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
+                  <span>Kirim</span>
+                </button>
+              </div>
+              <div className="flex items-center justify-between text-[11px] text-slate-400 px-1">
+                <span>Pesan dapat dibaca oleh Dosen dan seluruh Mahasiswa di kelas ini. Notifikasi otomatis dikirimkan ke akun peserta.</span>
+                <span>{newMessageText.length} karakter</span>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* KONTEN TAB 3: PESERTA MAHASISWA */}
+      {activeMainTab === 'STUDENTS' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200">
+            <div>
+              <h3 className="font-bold text-base text-slate-900 flex items-center gap-2">
+                <Users className="w-4 h-4 text-brand-700" />
+                Daftar Mahasiswa Terdaftar ({enrolledStudentsList.length} / {classData.kuota} Kuota)
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Seluruh mahasiswa yang telah mengambil mata kuliah ini via KRS Mandiri atau didaftarkan oleh Bagian Administrasi Akademik (BAA).
+              </p>
+            </div>
+            {(isAdmin || isBaa || isSuperAdmin) && (
               <button
-                onClick={handleOpenAttendanceModal}
-                className="w-full py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow transition-colors"
+                type="button"
+                onClick={() => setShowStudentManagementModal(true)}
+                className="px-4 py-2 bg-brand-800 hover:bg-brand-900 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow transition-colors"
               >
-                <CheckCircle className="w-4 h-4" />
-                Input / Rekap Presensi Cepat
+                <Plus className="w-3.5 h-3.5" />
+                <span>Tambah / Kelola Mahasiswa</span>
               </button>
             )}
           </div>
 
-          {/* Box Tugas Pertemuan */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-              <Award className="w-4 h-4 text-brand-700" />
-              Tugas & Evaluasi Pertemuan {activeMeeting.pertemuanKe}
-            </h3>
-
-            {activeMeeting.hasTask || activeMeeting.isExam ? (
-              <div className="space-y-3">
-                <div className="p-3.5 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-900">
-                  <div className="font-bold mb-1">
-                    {activeMeeting.isExam ? `Ujian Resmi: ${activeMeeting.examType}` : activeMeeting.taskTitle}
-                  </div>
-                  <p className="text-[11px] text-amber-800">
-                    Batas waktu pengumpulan: <strong>{activeMeeting.taskDeadline || '23:59 WITA'}</strong>.
-                  </p>
-                </div>
-
-                {/* Status Pengumpulan untuk Mahasiswa */}
-                {isMahasiswa && (
-                  <div className="pt-2">
-                    {mySubmission ? (
-                      <div className="p-3.5 bg-emerald-50 rounded-xl border border-emerald-200 text-xs text-emerald-900 space-y-2">
-                        <div className="flex items-center gap-1.5 font-bold">
-                          <CheckCircle className="w-4 h-4 text-emerald-600" />
-                          Tugas Telah Dikumpulkan (Link Disematkan)!
-                        </div>
-                        <div className="text-[11px] flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-emerald-200/60">
-                          <span>Dokumen: <strong>{mySubmission.fileName}</strong></span>
-                          {mySubmission.fileUrl && (
-                            <a
-                              href={mySubmission.fileUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-[10px] font-bold shadow-sm"
-                            >
-                              <span>Buka Link Tugas</span>
-                              <ExternalLink className="w-3 h-3" />
-                            </a>
-                          )}
-                        </div>
-                        {mySubmission.catatan && (
-                          <p className="text-[11px] text-emerald-800 italic bg-emerald-100/40 p-2 rounded-lg">
-                            Catatan Anda: "{mySubmission.catatan}"
-                          </p>
-                        )}
-                        {mySubmission.nilai !== undefined ? (
-                          <div className="p-2 bg-white rounded-lg border border-emerald-300 mt-2">
-                            <span className="text-[11px] text-slate-500 block">Nilai Dosen:</span>
-                            <span className="text-lg font-extrabold text-emerald-700">{mySubmission.nilai} / 100</span>
-                            {mySubmission.catatanDosen && (
-                              <p className="text-[11px] text-slate-600 mt-1 italic">
-                                "{mySubmission.catatanDosen}"
-                              </p>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="text-[11px] text-slate-500 italic">Menunggu penilaian Dosen.</div>
-                        )}
-                      </div>
-                    ) : (
-                      isTaActive ? (
-                        <button
-                          onClick={() => setShowTaskSubmitModal(true)}
-                          className="w-full py-2.5 bg-brand-800 hover:bg-brand-900 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow transition-colors"
-                        >
-                          <Share2 className="w-4 h-4" />
-                          Sematkan Link Tugas Mahasiswa
-                        </button>
-                      ) : (
-                        <div className="text-center p-3 bg-slate-100 rounded-xl text-slate-500 text-xs font-medium border border-slate-200">
-                          Semester telah ditutup. Tidak dapat mengumpulkan tugas.
-                        </div>
-                      )
+          {enrolledStudentsList.length === 0 ? (
+            <div className="text-center py-12 text-slate-400 text-xs">
+              Belum ada mahasiswa yang terdaftar di kelas ini.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                  <tr>
+                    <th className="px-4 py-3">No</th>
+                    <th className="px-4 py-3">NIM / Username</th>
+                    <th className="px-4 py-3">Nama Lengkap</th>
+                    <th className="px-4 py-3">Program Studi</th>
+                    <th className="px-4 py-3">Angkatan / Semester</th>
+                    <th className="px-4 py-3">Status</th>
+                    {(isAdmin || isBaa || isSuperAdmin) && (
+                      <th className="px-4 py-3 text-right">Aksi</th>
                     )}
-                  </div>
-                )}
-
-                {/* Daftar Pengumpulan Mahasiswa untuk Dosen/Admin */}
-                {canManageClass && (
-                  <div className="pt-2 space-y-2">
-                    <div className="text-xs font-semibold text-slate-700 flex justify-between">
-                      <span>Mahasiswa Mengumpulkan:</span>
-                      <span>{Object.keys(activeMeeting.submissions || {}).length} Orang</span>
-                    </div>
-
-                    <div className="max-h-60 overflow-y-auto space-y-2">
-                      {Object.values(activeMeeting.submissions || {}).map(sub => (
-                        <div key={sub.mahasiswaId} className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs flex justify-between items-center gap-2">
-                          <div>
-                            <div className="font-bold text-slate-900">{sub.mahasiswaName}</div>
-                            <div className="text-[10px] text-slate-400">NIM: {sub.nim}</div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {sub.fileUrl && (
-                              <a
-                                href={sub.fileUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors"
-                              >
-                                <span>Buka Link Tugas</span>
-                                <ExternalLink className="w-3 h-3" />
-                              </a>
-                            )}
-                            {sub.nilai !== undefined ? (
-                              <button
-                                onClick={() => {
-                                  if (!isTaActive) return showErrorToast("Semester ditutup, tidak dapat mengubah nilai.");
-                                  setShowGradingModal(sub);
-                                  setGradingForm({ nilai: sub.nilai, feedback: sub.catatanDosen || '' });
-                                }}
-                                className="px-2 py-1 bg-emerald-100 text-emerald-800 rounded font-bold text-xs"
-                              >
-                                Nilai: {sub.nilai}
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => {
-                                  if (!isTaActive) return showErrorToast("Semester ditutup, tidak dapat mengubah nilai.");
-                                  setShowGradingModal(sub);
-                                  setGradingForm({ nilai: 85, feedback: '' });
-                                }}
-                                className="px-2.5 py-1 bg-brand-800 text-white rounded font-bold text-xs hover:bg-brand-900"
-                              >
-                                Beri Nilai
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-              </div>
-            ) : (
-              <div className="p-4 border-2 border-dashed border-slate-200 rounded-xl text-center text-xs text-slate-400">
-                Tidak ada penugasan terstruktur untuk pertemuan ini.
-              </div>
-            )}
-          </div>
-
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-700">
+                  {enrolledStudentsList.map((stu, idx) => (
+                    <tr key={stu.uid || stu.id || idx} className="hover:bg-slate-50/70 transition-colors">
+                      <td className="px-4 py-3 font-semibold text-slate-400">{idx + 1}</td>
+                      <td className="px-4 py-3 font-mono font-bold text-slate-900">{stu.nim || stu.username || '-'}</td>
+                      <td className="px-4 py-3 font-semibold text-slate-900">{stu.name}</td>
+                      <td className="px-4 py-3">{stu.prodiId || '-'}</td>
+                      <td className="px-4 py-3">{stu.angkatan ? `Angkatan ${stu.angkatan}` : '-'}</td>
+                      <td className="px-4 py-3">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          Aktif Kuliah
+                        </span>
+                      </td>
+                      {(isAdmin || isBaa || isSuperAdmin) && (
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => handleQuickRemoveStudent(stu)}
+                            className="px-2.5 py-1 text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg text-[11px] font-bold transition-colors"
+                          >
+                            Keluarkan
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
-
-      </div>
+      )}
 
       {/* MODAL 1: ATUR MEDIA PERKULIAHAN DARING (YOUTUBE / ZOOM / GOOGLE MEET) */}
       {showMediaModal && (
