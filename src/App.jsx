@@ -20,6 +20,7 @@ import { LayoutDashboard, BookOpen, Award, Menu as MenuIcon } from 'lucide-react
 function MainApp() {
   const { user, isSuperAdmin, isBaa, isAdmin } = useAuth();
   const [unauthView, setUnauthView] = useState('landing'); // 'landing' | 'login'
+  const [authMode, setAuthMode] = useState('LOGIN'); // 'LOGIN' | 'REGISTER'
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedClassId, setSelectedClassId] = useState(null);
   const [selectedClassInitialTab, setSelectedClassInitialTab] = useState('MEETINGS');
@@ -28,9 +29,25 @@ function MainApp() {
   // Jika belum login: tampilkan Landing Page atau Login Page
   if (!user) {
     if (unauthView === 'login') {
-      return <LoginPage onBackToLanding={() => setUnauthView('landing')} />;
+      return (
+        <LoginPage 
+          defaultAuthMode={authMode} 
+          onBackToLanding={() => setUnauthView('landing')} 
+        />
+      );
     }
-    return <LandingPage onGoToLogin={() => setUnauthView('login')} />;
+    return (
+      <LandingPage 
+        onGoToLogin={() => {
+          setAuthMode('LOGIN');
+          setUnauthView('login');
+        }} 
+        onGoToRegister={() => {
+          setAuthMode('REGISTER');
+          setUnauthView('login');
+        }} 
+      />
+    );
   }
 
   const handleNavigate = (tab, params = {}) => {

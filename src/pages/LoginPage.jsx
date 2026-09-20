@@ -26,9 +26,9 @@ import {
 
 import { showErrorAlert, showSuccessAlert, showSuccessToast } from '../utils/alert';
 
-export default function LoginPage({ onBackToLanding }) {
+export default function LoginPage({ onBackToLanding, defaultAuthMode = 'LOGIN' }) {
   const { login, setSpecificUser, isFirebaseLive } = useAuth();
-  const [authMode, setAuthMode] = useState('LOGIN'); // 'LOGIN' | 'REGISTER' | 'FORGOT_PASSWORD'
+  const [authMode, setAuthMode] = useState(defaultAuthMode || 'LOGIN'); // 'LOGIN' | 'REGISTER' | 'FORGOT_PASSWORD'
 
   // Login State (Clean & Kosong secara default)
   const [identifier, setIdentifier] = useState('');
@@ -102,10 +102,21 @@ export default function LoginPage({ onBackToLanding }) {
     setErrorMessage('');
     setSuccessMessage('');
 
-    if (!regForm.name || !regForm.email || !regForm.password) {
-      const msg = "Harap lengkapi semua kolom pendaftaran yang wajib diisi.";
+    const cleanName = (regForm.name || '').trim();
+    const cleanEmail = (regForm.email || '').trim().toLowerCase();
+    const cleanNim = (regForm.nim || '').trim().replace(/\D/g, '');
+
+    if (!cleanName || !cleanEmail || !regForm.password) {
+      const msg = "Harap lengkapi nama, email, dan kata sandi pendaftaran.";
       setErrorMessage(msg);
       showErrorAlert('Data Belum Lengkap', msg);
+      return;
+    }
+
+    if (!cleanNim) {
+      const msg = "Nomor Induk Mahasiswa (NIM) wajib diisi.";
+      setErrorMessage(msg);
+      showErrorAlert('NIM Belum Diisi', msg);
       return;
     }
 
@@ -126,20 +137,18 @@ export default function LoginPage({ onBackToLanding }) {
     setLoading(true);
     try {
       const newStudent = await registerStudent({
-        name: regForm.name,
-        email: regForm.email,
+        name: cleanName,
+        email: cleanEmail,
         password: regForm.password,
-        prodiId: regForm.prodiId,
-        angkatan: regForm.angkatan,
-        nim: regForm.nim,
-        phone: regForm.phone
+        prodiId: regForm.prodiId || 'prodi-s1-manajemen',
+        angkatan: Number(regForm.angkatan) || 2026,
+        nim: cleanNim,
+        phone: (regForm.phone || '').trim()
       });
 
-      showSuccessAlert('Pendaftaran Berhasil!', `Selamat datang, ${newStudent.name}. Mengalihkan ke portal mahasiswa...`);
-      setSuccessMessage("Pendaftaran berhasil! Mengalihkan ke dasbor mahasiswa...");
-      setTimeout(() => {
-        setSpecificUser(newStudent);
-      }, 1000);
+      showSuccessToast(`Selamat datang, ${newStudent.name}! Pendaftaran berhasil.`);
+      // Langsung arahkan mahasiswa ke dasbor
+      setSpecificUser(newStudent);
     } catch (err) {
       const msg = err.message || "Gagal melakukan pendaftaran.";
       setErrorMessage(msg);
@@ -499,13 +508,8 @@ export default function LoginPage({ onBackToLanding }) {
                   type="text"
                   required
                   inputMode="numeric"
-                  pattern="[0-9]*"
                   placeholder="Contoh: 261011001 (Hanya Angka)"
                   value={regForm.nim}
-                  onKeyDown={e => {
-                    if (['Backspace', 'Delete', 'Tab', 'Escape', 'Enter', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key) || e.ctrlKey || e.metaKey) return;
-                    if (!/^[0-9]$/.test(e.key)) e.preventDefault();
-                  }}
                   onChange={e => setRegForm({ ...regForm, nim: e.target.value.replace(/\D/g, '') })}
                   className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono font-bold text-slate-900 bg-white"
                 />

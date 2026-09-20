@@ -158,6 +158,8 @@ export async function getLocal(key, initial = []) {
             permanentDeleted.forEach(pid => {
               if (!deletedIds.includes(pid)) deletedIds.push(pid);
             });
+            // Jangan pernah memfilter akun resmi Rabiyah yang dipulihkan
+            deletedIds = deletedIds.filter(id => id !== 'user-mhs-1789806444944' && id !== 'raby79279@gmail.com');
           } else if (key === STORAGE_KEYS.CLASSES) {
             try {
               const delRaw = localStorage.getItem('STIE_LMS_DELETED_CLASSES');
@@ -280,6 +282,8 @@ export async function getLocal(key, initial = []) {
     permanentDeleted.forEach(pid => {
       if (!localDeletedIds.includes(pid)) localDeletedIds.push(pid);
     });
+    // Jangan pernah memfilter akun resmi Rabiyah yang dipulihkan
+    localDeletedIds = localDeletedIds.filter(id => id !== 'user-mhs-1789806444944' && id !== 'raby79279@gmail.com');
   } else if (key === STORAGE_KEYS.CLASSES) {
     try {
       const delRaw = localStorage.getItem('STIE_LMS_DELETED_CLASSES');
@@ -393,7 +397,25 @@ export async function initializeLocalStore() {
     await setLocal(STORAGE_KEYS.TA, cleanTa);
   }
 
-  await getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
+  // Pulihkan akun mahasiswa Rabiyah jika sebelumnya tidak sengaja terhapus
+  try {
+    const delUsersRaw = localStorage.getItem('STIE_LMS_DELETED_USERS');
+    if (delUsersRaw) {
+      const parsed = JSON.parse(delUsersRaw);
+      const filtered = parsed.filter(id => id !== 'user-mhs-1789806444944' && id !== 'raby79279@gmail.com');
+      localStorage.setItem('STIE_LMS_DELETED_USERS', JSON.stringify(filtered));
+    }
+  } catch (e) {}
+
+  const currentUsers = await getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
+  // Pastikan akun Rabiyah aktif dan tersedia di daftar pengguna
+  if (!currentUsers.some(u => String(u.uid || u.id) === 'user-mhs-1789806444944' || u.email === 'raby79279@gmail.com')) {
+    const rabiyah = INITIAL_USERS.find(u => u.uid === 'user-mhs-1789806444944');
+    if (rabiyah) {
+      currentUsers.unshift(rabiyah);
+      await setLocal(STORAGE_KEYS.USERS, currentUsers);
+    }
+  }
 
   // Pastikan Mata Kuliah yang baru disertakan dan yang dihapus tidak dibangkitkan
   let deletedMkIds = [];
@@ -1022,35 +1044,67 @@ export async function resetUserPassword(uid, newPassword, currentUser) {
 export async function registerStudent(studentData) {
   const list = await getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
   const emailClean = (studentData.email || '').trim().toLowerCase();
+  const nimClean = studentData.nim ? String(studentData.nim).replace(/\D/g, '') : `261011${Math.floor(100 + Math.random() * 900)}`;
 
-  const exists = list.some(u => u.email?.toLowerCase() === emailClean);
-  if (exists) {
-    throw new Error(`Email ${studentData.email} sudah terdaftar. Silakan gunakan email lain atau langsung masuk.`);
+  if (!emailClean || !emailClean.includes('@') || !emailClean.includes('.')) {
+    throw new Error("Alamat email tidak valid. Pastikan format email benar (contoh: nama@gmail.com).");
+  }
+
+  const emailExists = list.some(u => (u.email || '').trim().toLowerCase() === emailClean);
+  if (emailExists) {
+    throw new Error(`Email '${studentData.email}' sudah terdaftar. Silakan gunakan email lain atau langsung masuk pada halaman login.`);
+  }
+
+  if (nimClean && list.some(u => String(u.nim || '').trim() === nimClean)) {
+    throw new Error(`NIM '${nimClean}' sudah terdaftar dalam sistem. Silakan periksa kembali NIM Anda.`);
   }
 
   const newUid = `user-mhs-${Date.now()}`;
+  const username = (emailClean.split('@')[0] || newUid).trim().toLowerCase();
   const newStudent = {
     uid: newUid,
-    name: studentData.name || 'Mahasiswa Baru',
+    id: newUid,
+    name: (studentData.name || 'Mahasiswa Baru').trim(),
     email: emailClean,
-    username: emailClean.split('@')[0],
+    username,
     password: (studentData.password && studentData.password.trim()) || 'mhs2026',
     role: 'MAHASISWA',
-    nim: studentData.nim ? String(studentData.nim).replace(/\D/g, '') : `261011${Math.floor(100 + Math.random() * 900)}`,
-    angkatan: studentData.angkatan || 2026,
+    nim: nimClean,
+    nidn: '',
+    angkatan: studentData.angkatan ? Number(studentData.angkatan) : 2026,
+    semester: 1,
     prodiId: studentData.prodiId || 'prodi-s1-manajemen',
-    phone: studentData.phone || '',
+    phone: (studentData.phone || '').trim(),
     isActive: true,
-    avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(studentData.name)}&background=1e3a8a&color=fff`,
+    avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(studentData.name || 'Mahasiswa')}&background=1e3a8a&color=fff`,
     createdAt: new Date().toISOString()
   };
 
-  list.push(newStudent);
+  // Bersihkan dari daftar terhapus jika email/uid/nim pernah tercatat
+  try {
+    const delRaw = localStorage.getItem('STIE_LMS_DELETED_USERS');
+    if (delRaw) {
+      const delList = JSON.parse(delRaw).filter(id => id !== newUid && id !== emailClean && id !== nimClean);
+      localStorage.setItem('STIE_LMS_DELETED_USERS', JSON.stringify(delList));
+    }
+  } catch (e) {}
+
+  // Direct Firestore write attempt jika online
+  if (isRealFirebaseConfigured() && db) {
+    try {
+      const cleanFbDoc = JSON.parse(JSON.stringify(newStudent));
+      await setDoc(doc(db, "users", newUid), cleanFbDoc, { merge: true });
+    } catch (e) {
+      console.warn("Direct Firestore registerStudent setDoc warning:", e);
+    }
+  }
+
+  list.unshift(newStudent);
   await setLocal(STORAGE_KEYS.USERS, list);
   await logAudit(
     newStudent, 
     'REGISTER_STUDENT', 
-    `Mahasiswa mendaftar mandiri: ${newStudent.name} (${newStudent.nim})`
+    `Mahasiswa mendaftar mandiri: ${newStudent.name} (${newStudent.nim}) - ${newStudent.email}`
   );
   return newStudent;
 }

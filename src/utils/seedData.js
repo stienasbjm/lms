@@ -87,6 +87,7 @@ export const INITIAL_USERS = [
   },
   {
     uid: 'user-mhs-4',
+    id: 'user-mhs-4',
     email: 'mahasiswa@stienas.ac.id',
     aliasEmail: '261011001@lms.stienas.ac.id',
     name: 'Putri Maharani',
@@ -100,6 +101,22 @@ export const INITIAL_USERS = [
     semester: 1,
     isActive: true,
     avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
+  },
+  {
+    uid: 'user-mhs-1789806444944',
+    id: 'user-mhs-1789806444944',
+    email: 'raby79279@gmail.com',
+    name: 'Rabiyah',
+    role: 'MAHASISWA',
+    nim: '20251111644',
+    angkatan: 2025,
+    username: 'raby79279',
+    password: 'Cantik124',
+    phone: '08115003124',
+    prodiId: 'prodi-s1-manajemen',
+    semester: 3,
+    isActive: true,
+    avatarUrl: 'https://ui-avatars.com/api/?name=Rabiyah&background=1e3a8a&color=fff'
   }
 ];
 

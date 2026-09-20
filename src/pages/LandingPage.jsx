@@ -30,10 +30,11 @@ import {
   FileText, 
   Compass,
   Menu,
-  X
+  X,
+  UserPlus
 } from 'lucide-react';
 
-export default function LandingPage({ onGoToLogin }) {
+export default function LandingPage({ onGoToLogin, onGoToRegister }) {
   const { loginAsRole } = useAuth();
   const [activeFaq, setActiveFaq] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -167,6 +168,15 @@ export default function LandingPage({ onGoToLogin }) {
             {/* Action CTA & Mobile Hamburger */}
             <div className="flex items-center space-x-2">
               <button
+                type="button"
+                onClick={onGoToRegister || onGoToLogin}
+                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-bold transition-all"
+              >
+                <UserPlus className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Daftar Mahasiswa</span>
+              </button>
+
+              <button
                 onClick={onGoToLogin}
                 className="inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 bg-brand-800 hover:bg-brand-900 text-white rounded-xl text-xs font-bold shadow-md shadow-brand-950/10 transition-all transform hover:-translate-y-0.5"
               >
@@ -226,6 +236,19 @@ export default function LandingPage({ onGoToLogin }) {
               <button
                 type="button"
                 onClick={() => {
+                  if (onGoToRegister) onGoToRegister();
+                  else onGoToLogin();
+                  setMobileMenuOpen(false);
+                }}
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-bold shadow-sm"
+              >
+                <UserPlus className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Daftar Mahasiswa Baru</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
                   onGoToLogin();
                   setMobileMenuOpen(false);
                 }}
@@ -275,6 +298,14 @@ export default function LandingPage({ onGoToLogin }) {
               <Lock className="w-4 h-4" />
               <span>Masuk Portal LMS OBE</span>
               <ArrowRight className="w-4 h-4" />
+            </button>
+
+            <button
+              onClick={onGoToRegister || onGoToLogin}
+              className="w-full sm:w-auto px-7 py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs sm:text-sm font-bold shadow-lg shadow-emerald-900/30 flex items-center justify-center gap-2 transition-all transform hover:scale-105 active:scale-95 border border-emerald-400/30"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>Pendaftaran Mahasiswa Baru</span>
             </button>
           </div>
 
