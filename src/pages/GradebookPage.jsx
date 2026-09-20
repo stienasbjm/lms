@@ -651,6 +651,7 @@ export default function GradebookPage({ initialClassId }) {
           type="KHS"
           student={user}
           prodis={prodis}
+          mks={mks}
           activeTa={activeTa}
           khsRows={myKhsRows}
           totalSks={totalSks}
@@ -1146,6 +1147,7 @@ export default function GradebookPage({ initialClassId }) {
         onClose={() => setShowPrintModal(false)}
         type="GRADEBOOK"
         prodis={prodis}
+        mks={mks}
         activeTa={selectedTa || activeTa}
         classData={selectedClass}
         enrolledRows={selectedClassEnrolledRows}

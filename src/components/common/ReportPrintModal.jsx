@@ -8,7 +8,6 @@ import {
   Award, 
   GraduationCap, 
   CheckCircle2, 
-  Building2,
   Edit2,
   Save,
   Check,
@@ -22,6 +21,7 @@ export default function ReportPrintModal({
   type = 'KHS', // 'KHS' | 'GRADEBOOK'
   student,
   prodis = [],
+  mks = [],
   activeTa,
   khsRows = [],
   totalSks = 0,
@@ -35,11 +35,86 @@ export default function ReportPrintModal({
   const { user, isAdmin, isBaa } = useAuth();
   const canEditKaprodi = isAdmin || isBaa;
 
-  const targetProdi = (prodis || []).find(p => p.id === (student?.prodiId || classData?.prodiId))
-    || (prodis || []).find(p => p.namaProdi === (student?.prodi || classData?.prodi))
-    || (prodis || [])[0];
+  // Resolusi Program Studi yang akurat (Mata Kuliah / Kelas / Mahasiswa)
+  const targetProdi = (() => {
+    const list = prodis || [];
+    if (list.length === 0) return null;
 
-  const studentProdiName = targetProdi ? targetProdi.namaProdi : (student?.prodi || 'S1 Manajemen');
+    if (type === 'GRADEBOOK' && classData) {
+      // 1. Cek langsung dari id prodi pada kelas
+      if (classData.prodiId) {
+        const found = list.find(p => p.id === classData.prodiId);
+        if (found) return found;
+      }
+      if (classData.prodi) {
+        const found = list.find(p => p.namaProdi?.toLowerCase() === classData.prodi.toLowerCase() || p.id === classData.prodi);
+        if (found) return found;
+      }
+
+      // 2. Cek relasi dari Mata Kuliah (mks)
+      const mk = (mks || []).find(m => 
+        (classData.mataKuliahId && m.id === classData.mataKuliahId) ||
+        (classData.kodeMk && m.kodeMk?.toUpperCase() === classData.kodeMk.toUpperCase()) ||
+        (classData.namaMk && m.namaMk?.toLowerCase() === classData.namaMk.toLowerCase())
+      );
+      if (mk?.prodiId) {
+        const found = list.find(p => p.id === mk.prodiId);
+        if (found) return found;
+      }
+
+      // 3. Deteksi akurat berbasis Kode MK atau Nama MK (Akuntansi vs Manajemen)
+      const kode = (classData.kodeMk || mk?.kodeMk || '').toUpperCase();
+      const nama = (classData.namaMk || mk?.namaMk || '').toLowerCase();
+
+      if (kode.startsWith('AKT') || kode.startsWith('AK') || nama.includes('akuntan')) {
+        const akt = list.find(p => p.namaProdi?.toLowerCase().includes('akuntansi') || p.id?.includes('akuntansi'));
+        if (akt) return akt;
+      }
+
+      if (kode.startsWith('MNJ') || kode.startsWith('BIS') || kode.startsWith('MGT') || kode.startsWith('MAN') || nama.includes('manajemen') || nama.includes('bisnis')) {
+        const mnj = list.find(p => p.namaProdi?.toLowerCase().includes('manajemen') || p.id?.includes('manajemen'));
+        if (mnj) return mnj;
+      }
+    }
+
+    if (type === 'KHS') {
+      // 1. Cek prodiId mahasiswa
+      if (student?.prodiId) {
+        const found = list.find(p => p.id === student.prodiId);
+        if (found) return found;
+      }
+
+      // 2. Cek nama prodi mahasiswa
+      if (student?.prodi) {
+        const stdProdiLower = student.prodi.toLowerCase();
+        const found = list.find(p => 
+          p.namaProdi?.toLowerCase() === stdProdiLower || 
+          p.id?.toLowerCase() === stdProdiLower ||
+          (stdProdiLower.includes('akuntansi') && p.namaProdi?.toLowerCase().includes('akuntansi')) ||
+          (stdProdiLower.includes('manajemen') && p.namaProdi?.toLowerCase().includes('manajemen'))
+        );
+        if (found) return found;
+      }
+
+      // 3. Deteksi dari mata kuliah di KHS jika ada
+      if (khsRows && khsRows.length > 0) {
+        const aktCount = khsRows.filter(r => (r.kodeMk || '').toUpperCase().startsWith('AKT') || (r.namaMk || '').toLowerCase().includes('akuntansi')).length;
+        const mnjCount = khsRows.filter(r => (r.kodeMk || '').toUpperCase().startsWith('MNJ') || (r.namaMk || '').toLowerCase().includes('manajemen')).length;
+        if (aktCount > mnjCount) {
+          const akt = list.find(p => p.namaProdi?.toLowerCase().includes('akuntansi'));
+          if (akt) return akt;
+        } else if (mnjCount > 0) {
+          const mnj = list.find(p => p.namaProdi?.toLowerCase().includes('manajemen'));
+          if (mnj) return mnj;
+        }
+      }
+    }
+
+    // Default fallback
+    return list[0];
+  })();
+
+  const studentProdiName = targetProdi ? targetProdi.namaProdi : (student?.prodi || (classData ? 'S1 Manajemen' : 'S1 Manajemen'));
 
   // State Pejabat Ketua Program Studi yang dapat diedit manual
   const [kaprodiName, setKaprodiName] = useState('Dr. H. Muhammad Ramli, S.E., M.M.');
@@ -50,8 +125,16 @@ export default function ReportPrintModal({
 
   useEffect(() => {
     if (targetProdi) {
-      setKaprodiName(targetProdi.namaKaprodi || 'Dr. H. Muhammad Ramli, S.E., M.M.');
-      setKaprodiNip(targetProdi.nuptkKaprodi || targetProdi.nidnKaprodi || '1102046801');
+      const isAkuntansi = targetProdi.namaProdi?.toLowerCase().includes('akuntansi') || targetProdi.id?.includes('akuntansi');
+      const defaultName = isAkuntansi 
+        ? 'Hj. Nurul Fadhilah, S.E., M.Ak., Ak., CA' 
+        : 'Dr. H. Muhammad Ramli, S.E., M.M.';
+      const defaultNip = isAkuntansi 
+        ? '1124018201' 
+        : '1102046801';
+
+      setKaprodiName(targetProdi.namaKaprodi || defaultName);
+      setKaprodiNip(targetProdi.nuptkKaprodi || targetProdi.nidnKaprodi || defaultNip);
     }
   }, [targetProdi, isOpen]);
 
@@ -81,8 +164,16 @@ export default function ReportPrintModal({
 
   const handleResetKaprodi = () => {
     if (targetProdi) {
-      setKaprodiName(targetProdi.namaKaprodi || 'Dr. H. Muhammad Ramli, S.E., M.M.');
-      setKaprodiNip(targetProdi.nuptkKaprodi || targetProdi.nidnKaprodi || '1102046801');
+      const isAkuntansi = targetProdi.namaProdi?.toLowerCase().includes('akuntansi') || targetProdi.id?.includes('akuntansi');
+      const defaultName = isAkuntansi 
+        ? 'Hj. Nurul Fadhilah, S.E., M.Ak., Ak., CA' 
+        : 'Dr. H. Muhammad Ramli, S.E., M.M.';
+      const defaultNip = isAkuntansi 
+        ? '1124018201' 
+        : '1102046801';
+
+      setKaprodiName(targetProdi.namaKaprodi || defaultName);
+      setKaprodiNip(targetProdi.nuptkKaprodi || targetProdi.nidnKaprodi || defaultNip);
     }
   };
 
@@ -263,22 +354,35 @@ export default function ReportPrintModal({
           {/* KOP SURAT RESMI LEMBAGA */}
           <div className="border-b-4 border-double border-slate-900 pb-3 mb-5">
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 shrink-0 rounded-2xl bg-brand-900 text-amber-400 flex flex-col items-center justify-center font-black border-2 border-brand-800 shadow-sm print:shadow-none">
-                <Building2 className="w-8 h-8" />
-                <span className="text-[8px] tracking-tighter uppercase font-bold text-white">STIENAS</span>
+              <div className="w-20 h-20 shrink-0 flex items-center justify-center">
+                <img 
+                  src={`${import.meta.env.BASE_URL}logo-stienas.png`} 
+                  alt="Logo STIENAS Banjarmasin" 
+                  className="w-20 h-20 object-contain"
+                />
               </div>
-              <div className="flex-1 text-center pr-12">
-                <h1 className="text-base sm:text-lg font-extrabold uppercase tracking-wide text-slate-950">
-                  Sekolah Tinggi Ilmu Ekonomi (STIE) Nasional Banjarmasin
+              <div className="flex-1 text-center pr-4">
+                <h2 className="text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-900 leading-tight">
+                  YAYASAN PENDIDIKAN BANDARMASIH
+                </h2>
+                <h1 className="text-sm sm:text-base font-black uppercase tracking-wide text-slate-950 leading-tight mt-0.5">
+                  SEKOLAH TINGGI ILMU EKONOMI NASIONAL
                 </h1>
-                <p className="text-[11px] font-bold text-slate-700 uppercase tracking-wider mt-0.5">
-                  Bagian Administrasi Akademik & Pengelolaan Kurikulum OBE
+                <h1 className="text-sm sm:text-base font-black uppercase tracking-wide text-slate-950 leading-tight">
+                  (STIENAS) BANJARMASIN
+                </h1>
+                <p className="text-[10px] font-bold text-slate-800 uppercase tracking-wider mt-0.5">
+                  UPZ STIE NASIONAL BANJARMASIN
                 </p>
-                <p className="text-[10px] text-slate-500 mt-0.5">
-                  Jl. Mayjen Sutoyo S. No. 126, Teluk Dalam, Banjarmasin, Kalimantan Selatan 70117
+                <div className="text-[9px] font-semibold text-slate-700 leading-tight mt-1 space-y-0.5">
+                  <p>TERAKREDITASI SK. NO. : 501/DE/A.5/AR.10/VII/2023 PROGRAM STUDI: AKUNTANSI</p>
+                  <p>TERAKREDITASI SK. NO. : 1318/DE/A.5/AR.10/VI/2024 PROGRAM STUDI: MANAJEMEN</p>
+                </div>
+                <p className="text-[9px] text-slate-600 mt-1 leading-tight">
+                  JL. Mayjend. Soetoyo S No. 126 Kota Banjarmasin, Kalimantan Selatan 70114
                 </p>
-                <p className="text-[9px] text-slate-500 italic">
-                  Laman: www.stienas-bjm.ac.id • Email: akademik@stienas-bjm.ac.id • Telp: (0511) 3353287
+                <p className="text-[8.5px] text-slate-600 italic leading-tight">
+                  email: info@stienas-ypb.a.c.id website: stienas-ypb.ac.id
                 </p>
               </div>
             </div>
@@ -470,7 +574,7 @@ export default function ReportPrintModal({
                   <div>
                     <p className="text-[10px] text-slate-500">Banjarmasin, {currentDateFormatted}</p>
                     <p className="font-bold text-slate-900 flex items-center justify-center gap-1">
-                      <span>Ketua Program Studi</span>
+                      <span>Ketua Program Studi {targetProdi?.namaProdi || ''}</span>
                       {canEditKaprodi && (
                         <button
                           type="button"
@@ -613,7 +717,7 @@ export default function ReportPrintModal({
                   <div>
                     <p className="text-[10px] text-slate-500">Mengetahui,</p>
                     <p className="font-bold text-slate-900 flex items-center justify-center gap-1">
-                      <span>Ketua Program Studi</span>
+                      <span>Ketua Program Studi {targetProdi?.namaProdi || ''}</span>
                       {canEditKaprodi && (
                         <button
                           type="button"
