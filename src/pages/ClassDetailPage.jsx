@@ -512,11 +512,23 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
     }
   };
 
-  const mySubmission = activeMeeting.submissions ? activeMeeting.submissions[user.uid] : null;
+  const mySubmission = activeMeeting?.submissions ? activeMeeting.submissions[user?.uid] : null;
 
   // Hitung status presensi
-  const existingAttendances = activeMeeting.attendances || {};
-  const attendedCount = Object.values(existingAttendances).filter(a => a.status === 'HADIR').length;
+  const existingAttendances = activeMeeting?.attendances || {};
+  const attendedCount = Object.values(existingAttendances).filter(a => a?.status === 'HADIR').length;
+  const myAttendanceStatus = existingAttendances[user?.uid]?.status || null;
+  const attendanceCounts = {
+    HADIR: Object.values(existingAttendances).filter(a => a?.status === 'HADIR').length,
+    IZIN: Object.values(existingAttendances).filter(a => a?.status === 'IZIN').length,
+    SAKIT: Object.values(existingAttendances).filter(a => a?.status === 'SAKIT').length,
+    ALPA: Object.values(existingAttendances).filter(a => a?.status === 'ALPHA' || a?.status === 'ALPA').length
+  };
+
+  // Hitung notifikasi pesan kelas belum dibaca
+  const unreadClassMessagesCount = (classMessages || []).filter(
+    m => m.senderId !== (user?.uid || user?.id) && !(m.readBy || []).includes(user?.uid || user?.id)
+  ).length;
 
   return (
     <div className="space-y-6">
