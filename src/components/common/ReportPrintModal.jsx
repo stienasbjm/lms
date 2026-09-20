@@ -127,11 +127,11 @@ export default function ReportPrintModal({
   );
 
   const officialKaprodi = isAkuntansi ? {
-    nama: 'Hj. Nurul Fadhilah, S.E., M.Ak., Ak., CA',
+    nama: 'Ruslidan Agustina, SE., MSA.',
     nuptk: '1124018201',
     namaProdi: 'S1 Akuntansi'
   } : {
-    nama: 'Dr. H. Muhammad Ramli, S.E., M.M.',
+    nama: 'Rizki Amalia Afriana, SE., MM.',
     nuptk: '1102046801',
     namaProdi: 'S1 Manajemen'
   };
@@ -150,20 +150,13 @@ export default function ReportPrintModal({
     let resolvedNip = officialKaprodi.nuptk;
 
     if (targetProdi) {
-      if (isAkuntansi) {
-        if (targetProdi.namaKaprodi && !targetProdi.namaKaprodi.includes('Ramli')) {
-          resolvedName = targetProdi.namaKaprodi;
-        }
-        if (targetProdi.nuptkKaprodi && targetProdi.nuptkKaprodi !== '1102046801') {
-          resolvedNip = targetProdi.nuptkKaprodi;
-        }
-      } else {
-        if (targetProdi.namaKaprodi && !targetProdi.namaKaprodi.includes('Fadhilah')) {
-          resolvedName = targetProdi.namaKaprodi;
-        }
-        if (targetProdi.nuptkKaprodi && targetProdi.nuptkKaprodi !== '1124018201') {
-          resolvedNip = targetProdi.nuptkKaprodi;
-        }
+      // Prioritaskan nama yang sudah diset atau diedit oleh Admin & BAA di Master Akademik
+      if (targetProdi.namaKaprodi && !targetProdi.namaKaprodi.includes('Ramli') && !targetProdi.namaKaprodi.includes('Fadhilah')) {
+        resolvedName = targetProdi.namaKaprodi;
+      }
+      // Sinkronkan NUPTK / NIP dari Master Akademik > Fakultas & Prodi
+      if (targetProdi.nuptkKaprodi || targetProdi.nidnKaprodi) {
+        resolvedNip = targetProdi.nuptkKaprodi || targetProdi.nidnKaprodi;
       }
     }
 
@@ -196,8 +189,10 @@ export default function ReportPrintModal({
   };
 
   const handleResetKaprodi = () => {
-    setKaprodiName(officialKaprodi.nama);
-    setKaprodiNip(officialKaprodi.nuptk);
+    const defaultName = isAkuntansi ? 'Ruslidan Agustina, SE., MSA.' : 'Rizki Amalia Afriana, SE., MM.';
+    const defaultNip = targetProdi?.nuptkKaprodi || targetProdi?.nidnKaprodi || (isAkuntansi ? '1124018201' : '1102046801');
+    setKaprodiName(defaultName);
+    setKaprodiNip(defaultNip);
   };
 
   const currentDateFormatted = new Intl.DateTimeFormat('id-ID', {
@@ -398,7 +393,7 @@ export default function ReportPrintModal({
                 <p className="text-[12pt] font-bold uppercase tracking-wide text-black mt-0.5">
                   BAGIAN ADMINISTRASI AKADEMIK (BAA)
                 </p>
-                <div className="text-[12pt] font-bold leading-tight mt-1 space-y-0.5 px-1 text-black">
+                <div className="text-[9pt] font-bold leading-tight mt-1.5 space-y-0.5 px-1 text-black">
                   <div className="flex justify-between items-center">
                     <span>TERAKREDITASI SK. NO. : 501/DE/A.5/AR.10/VII/2023</span>
                     <span>PROGRAM STUDI: AKUNTANSI</span>
@@ -414,13 +409,13 @@ export default function ReportPrintModal({
             {/* Garis Horizontal Pembatas Pertama */}
             <div className="border-t-[1.5px] border-black w-full my-1" />
 
-            {/* Bagian Alamat, Kontak, Email, dan Website (10pt) */}
-            <div className="text-center text-[10pt] leading-tight py-0.5 text-black">
+            {/* Bagian Alamat, Kontak, Email, dan Website (9pt) */}
+            <div className="text-center text-[9pt] leading-tight py-0.5 text-black">
               <p>
-                JL. Mayjend.  Soetoyo S No. 126 Kota Banjarmasin, Kalimantan Selatan 70114 Telp. 0511- 4364563
+                JL. Mayjend. Soetoyo S No. 126 Kota Banjarmasin, Kalimantan Selatan 70114 Telp. 0511- 4364563
               </p>
               <p className="mt-0.5">
-                email: info@stienas-ypb.a.c.id website: stienas-ypb.ac.id
+                email: info@stienas-ypb.a.c.id, website: stienas-ypb.ac.id
               </p>
             </div>
 

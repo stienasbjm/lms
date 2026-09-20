@@ -14,7 +14,7 @@ export const INITIAL_PRODI = [
     namaProdi: 'S1 Manajemen', 
     jenjang: 'S1', 
     fakultasId: 'feb',
-    namaKaprodi: 'Dr. H. Muhammad Ramli, S.E., M.M.',
+    namaKaprodi: 'Rizki Amalia Afriana, SE., MM.',
     nuptkKaprodi: '1102046801'
   },
   { 
@@ -23,7 +23,7 @@ export const INITIAL_PRODI = [
     namaProdi: 'S1 Akuntansi', 
     jenjang: 'S1', 
     fakultasId: 'feb',
-    namaKaprodi: 'Hj. Nurul Fadhilah, S.E., M.Ak., Ak., CA',
+    namaKaprodi: 'Ruslidan Agustina, SE., MSA.',
     nuptkKaprodi: '1124018201'
   }
 ];

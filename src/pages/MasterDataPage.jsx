@@ -235,10 +235,14 @@ export default function MasterDataPage() {
   };
 
   const handleOpenEditKaprodi = (prodi) => {
+    const isAkt = prodi.id?.includes('akuntansi') || prodi.namaProdi?.toLowerCase().includes('akuntansi');
+    const defaultName = isAkt ? 'Ruslidan Agustina, SE., MSA.' : 'Rizki Amalia Afriana, SE., MM.';
+    const defaultNip = isAkt ? '1124018201' : '1102046801';
+
     setEditingProdi(prodi);
     setProdiForm({
-      namaKaprodi: prodi.namaKaprodi || 'Dr. H. Muhammad Ramli, S.E., M.M.',
-      nuptkKaprodi: prodi.nuptkKaprodi || prodi.nidnKaprodi || '1102046801'
+      namaKaprodi: prodi.namaKaprodi || defaultName,
+      nuptkKaprodi: prodi.nuptkKaprodi || prodi.nidnKaprodi || defaultNip
     });
   };
 
@@ -570,10 +574,10 @@ export default function MasterDataPage() {
                     )}
                   </div>
                   <div className="font-extrabold text-slate-900 text-sm">
-                    {prodi.namaKaprodi || 'Dr. H. Muhammad Ramli, S.E., M.M.'}
+                    {prodi.namaKaprodi || (prodi.id?.includes('akuntansi') ? 'Ruslidan Agustina, SE., MSA.' : 'Rizki Amalia Afriana, SE., MM.')}
                   </div>
                   <div className="text-[11px] font-mono text-slate-500">
-                    NUPTK/NIP: {prodi.nuptkKaprodi || prodi.nidnKaprodi || '1102046801'}
+                    NUPTK/NIP: {prodi.nuptkKaprodi || prodi.nidnKaprodi || (prodi.id?.includes('akuntansi') ? '1124018201' : '1102046801')}
                   </div>
                 </div>
               </div>

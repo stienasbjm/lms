@@ -398,14 +398,20 @@ export async function getProdi() {
     let nuptkKaprodi = item.nuptkKaprodi || item.nidnKaprodi;
 
     if (isAkt) {
-      if (!namaKaprodi || namaKaprodi.includes('Ramli') || !nuptkKaprodi || nuptkKaprodi === '1102046801') {
-        namaKaprodi = 'Hj. Nurul Fadhilah, S.E., M.Ak., Ak., CA';
+      if (!namaKaprodi || namaKaprodi.includes('Ramli') || namaKaprodi.includes('Fadhilah')) {
+        namaKaprodi = 'Ruslidan Agustina, SE., MSA.';
+        hasCorrection = true;
+      }
+      if (!nuptkKaprodi) {
         nuptkKaprodi = '1124018201';
         hasCorrection = true;
       }
     } else if (isMnj) {
-      if (!namaKaprodi || namaKaprodi.includes('Fadhilah') || !nuptkKaprodi || nuptkKaprodi === '1124018201') {
-        namaKaprodi = 'Dr. H. Muhammad Ramli, S.E., M.M.';
+      if (!namaKaprodi || namaKaprodi.includes('Ramli') || namaKaprodi.includes('Fadhilah')) {
+        namaKaprodi = 'Rizki Amalia Afriana, SE., MM.';
+        hasCorrection = true;
+      }
+      if (!nuptkKaprodi) {
         nuptkKaprodi = '1102046801';
         hasCorrection = true;
       }
@@ -413,7 +419,7 @@ export async function getProdi() {
 
     return {
       ...item,
-      namaKaprodi: namaKaprodi || (isAkt ? 'Hj. Nurul Fadhilah, S.E., M.Ak., Ak., CA' : 'Dr. H. Muhammad Ramli, S.E., M.M.'),
+      namaKaprodi: namaKaprodi || (isAkt ? 'Ruslidan Agustina, SE., MSA.' : 'Rizki Amalia Afriana, SE., MM.'),
       nuptkKaprodi: nuptkKaprodi || (isAkt ? '1124018201' : '1102046801')
     };
   });
