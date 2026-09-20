@@ -42,11 +42,18 @@ export default function Header({ onToggleSidebar, onNavigate }) {
 
   useEffect(() => {
     fetchNotifications();
+    const pollInterval = setInterval(() => {
+      fetchNotifications();
+    }, 8000); // Polling otomatis setiap 8 detik
+
     const unsubscribe = subscribeToDataSync((detail) => {
       if (detail && detail.key === 'STIE_LMS_LOGS') return;
       fetchNotifications();
     });
-    return () => unsubscribe();
+    return () => {
+      clearInterval(pollInterval);
+      unsubscribe();
+    };
   }, [user]);
 
   const handleOpenNotification = (notif) => {

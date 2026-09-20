@@ -166,13 +166,23 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
   useEffect(() => {
     loadClass(true);
     loadMessages();
+
+    // Polling interval untuk sinkronisasi pesan kelas secara real-time antara Dosen & Mahasiswa
+    const intervalTime = activeMainTab === 'MESSAGES' ? 3000 : 8000;
+    const pollInterval = setInterval(() => {
+      loadMessages();
+    }, intervalTime);
+
     let debounceTimer = null;
     const unsubscribe = subscribeToDataSync((detail) => {
       // Abaikan sinkronisasi audit logs agar tidak memicu re-render
       if (detail && detail.key === 'STIE_LMS_LOGS') return;
-      if (detail && (detail.key === `STIE_LMS_CLASS_MESSAGES_${classId}` || detail.key === 'STIE_LMS_NEW_MESSAGE_NOTIFICATION')) {
+      if (detail && (
+        detail.key === `STIE_LMS_CLASS_MESSAGES_${classId}` || 
+        detail.key === 'STIE_LMS_NEW_MESSAGE_NOTIFICATION' ||
+        detail.key === 'STIE_LMS_CLASSES'
+      )) {
         loadMessages();
-        return;
       }
       if (detail && detail.key && !['STIE_LMS_CLASSES', 'STIE_LMS_USERS', 'STIE_LMS_TA'].includes(detail.key)) return;
 
@@ -182,14 +192,16 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
       }, 50);
     });
     return () => {
+      clearInterval(pollInterval);
       if (debounceTimer) clearTimeout(debounceTimer);
       unsubscribe();
     };
-  }, [classId, user]);
+  }, [classId, user, activeMainTab]);
 
   useEffect(() => {
-    if (activeMainTab === 'MESSAGES' && user?.uid) {
-      markClassMessagesAsRead(classId, user.uid);
+    const currentUserId = user?.uid || user?.id;
+    if (activeMainTab === 'MESSAGES' && currentUserId) {
+      markClassMessagesAsRead(classId, currentUserId);
     }
   }, [activeMainTab, classId, user]);
 
@@ -512,12 +524,17 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
     }
   };
 
-  const mySubmission = activeMeeting?.submissions ? activeMeeting.submissions[user?.uid] : null;
+  const currentUserId = user?.uid || user?.id;
+  const mySubmission = activeMeeting?.submissions ? (
+    activeMeeting.submissions[currentUserId] ||
+    (user?.uid && activeMeeting.submissions[user.uid]) ||
+    (user?.id && activeMeeting.submissions[user.id])
+  ) : null;
 
   // Hitung status presensi
   const existingAttendances = activeMeeting?.attendances || {};
   const attendedCount = Object.values(existingAttendances).filter(a => a?.status === 'HADIR').length;
-  const myAttendanceStatus = existingAttendances[user?.uid]?.status || null;
+  const myAttendanceStatus = existingAttendances[currentUserId]?.status || (user?.uid && existingAttendances[user.uid]?.status) || (user?.id && existingAttendances[user.id]?.status) || null;
   const attendanceCounts = {
     HADIR: Object.values(existingAttendances).filter(a => a?.status === 'HADIR').length,
     IZIN: Object.values(existingAttendances).filter(a => a?.status === 'IZIN').length,
@@ -527,7 +544,7 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
 
   // Hitung notifikasi pesan kelas belum dibaca
   const unreadClassMessagesCount = (classMessages || []).filter(
-    m => m.senderId !== (user?.uid || user?.id) && !(m.readBy || []).includes(user?.uid || user?.id)
+    m => m.senderId !== currentUserId && !(m.readBy || []).includes(currentUserId)
   ).length;
 
   return (
@@ -938,99 +955,176 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
                     <Award className="w-4 h-4 text-purple-600" />
                     <span>Tugas Pertemuan {activeMeeting.pertemuanKe}</span>
                   </div>
-                  {activeMeeting.isTask && (
+                  {(activeMeeting.isTask || activeMeeting.hasTask) && (
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800">
                       Bobot OBE: {activeMeeting.taskWeight || '10%'}
                     </span>
                   )}
                 </div>
 
-                {activeMeeting.isTask ? (
-                  <div className="space-y-3">
-                    <div className="p-3 bg-purple-50/60 border border-purple-200 rounded-xl">
-                      <div className="font-bold text-xs text-purple-950">{activeMeeting.taskTitle}</div>
-                      <div className="text-xs text-purple-900 mt-1 leading-relaxed whitespace-pre-wrap">{activeMeeting.taskDesc}</div>
+                <div className="space-y-3">
+                  {/* Deskripsi Penugasan Dosen (jika ada instruksi khusus dari dosen) */}
+                  {(activeMeeting.isTask || activeMeeting.hasTask || activeMeeting.taskTitle || activeMeeting.taskDesc) ? (
+                    <div className="p-3.5 bg-purple-50/70 border border-purple-200 rounded-xl">
+                      <div className="font-bold text-xs text-purple-950">
+                        {activeMeeting.taskTitle || `Tugas Studi Kasus Pertemuan ${activeMeeting.pertemuanKe}`}
+                      </div>
+                      {activeMeeting.taskDesc && (
+                        <div className="text-xs text-purple-900 mt-1 leading-relaxed whitespace-pre-wrap">
+                          {activeMeeting.taskDesc}
+                        </div>
+                      )}
                       {activeMeeting.taskDeadline && (
-                        <div className="text-[11px] text-purple-800 font-semibold mt-2 pt-2 border-t border-purple-200 flex items-center gap-1">
+                        <div className="text-[11px] text-purple-800 font-semibold mt-2 pt-2 border-t border-purple-200/80 flex items-center gap-1">
                           <Clock className="w-3.5 h-3.5 text-purple-600" />
                           <span>Batas Akhir: {new Date(activeMeeting.taskDeadline).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
                         </div>
                       )}
                     </div>
+                  ) : (
+                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 leading-relaxed">
+                      <span className="font-semibold text-slate-800 block mb-0.5">Penugasan Pertemuan {activeMeeting.pertemuanKe}</span>
+                      Mahasiswa dapat menyematkan tautan dokumen tugas mandiri / tugas kelompok berupa link (Google Drive / Docs) untuk dinilai oleh Dosen.
+                    </div>
+                  )}
 
-                    {/* Pengumpulan Tugas Mahasiswa */}
-                    {isMahasiswa && (
-                      <div className="p-4 border border-slate-200 rounded-xl space-y-2 bg-slate-50">
-                        <div className="text-xs font-bold text-slate-800">Status Tugas Anda</div>
+                  {/* Pengumpulan Tugas Mahasiswa (Hanya Sematkan Link - Hemat Space Server) */}
+                  {isMahasiswa && (
+                    <div className="p-4 border border-slate-200 rounded-xl space-y-3 bg-slate-50/80">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-800">Status Pengumpulan Tugas Anda</span>
                         {mySubmission ? (
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between text-xs">
-                              <span>Dokumen: <strong>{mySubmission.fileName}</strong></span>
-                              {mySubmission.fileUrl && (
-                                <a
-                                  href={mySubmission.fileUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-[10px] font-bold shadow-sm"
-                                >
-                                  <span>Buka Link Tugas</span>
-                                  <ExternalLink className="w-3 h-3" />
-                                </a>
-                              )}
-                            </div>
-                            {mySubmission.catatan && (
-                              <p className="text-[11px] text-emerald-800 italic bg-emerald-100/40 p-2 rounded-lg">
-                                Catatan Anda: "{mySubmission.catatan}"
-                              </p>
-                            )}
-                            {mySubmission.nilai !== undefined ? (
-                              <div className="p-2 bg-white rounded-lg border border-emerald-300 mt-2">
-                                <span className="text-[11px] text-slate-500 block">Nilai Dosen:</span>
-                                <span className="text-lg font-extrabold text-emerald-700">{mySubmission.nilai} / 100</span>
-                                {mySubmission.catatanDosen && (
-                                  <p className="text-[11px] text-slate-600 mt-1 italic">
-                                    "{mySubmission.catatanDosen}"
-                                  </p>
-                                )}
-                              </div>
-                            ) : (
-                              <div className="text-[11px] text-slate-500 italic">Menunggu penilaian Dosen.</div>
-                            )}
-                          </div>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                            <Check className="w-3 h-3 text-emerald-600" />
+                            Terkumpul
+                          </span>
                         ) : (
-                          isTaActive ? (
-                            <button
-                              onClick={() => setShowTaskSubmitModal(true)}
-                              className="w-full py-2.5 bg-brand-800 hover:bg-brand-900 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow transition-colors"
-                            >
-                              <Share2 className="w-4 h-4" />
-                              Sematkan Link Tugas Mahasiswa
-                            </button>
-                          ) : (
-                            <div className="text-center p-3 bg-slate-100 rounded-xl text-slate-500 text-xs font-medium border border-slate-200">
-                              Semester telah ditutup. Tidak dapat mengumpulkan tugas.
-                            </div>
-                          )
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                            Belum Mengumpulkan
+                          </span>
                         )}
                       </div>
-                    )}
 
-                    {/* Daftar Pengumpulan Mahasiswa untuk Dosen/Admin */}
-                    {canManageClass && (
-                      <div className="pt-2 space-y-2">
-                        <div className="text-xs font-semibold text-slate-700 flex justify-between">
-                          <span>Mahasiswa Mengumpulkan:</span>
-                          <span>{Object.keys(activeMeeting.submissions || {}).length} Orang</span>
+                      {mySubmission ? (
+                        <div className="space-y-2.5 bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
+                          <div className="flex items-center justify-between gap-2 text-xs flex-wrap">
+                            <span className="truncate max-w-[200px] sm:max-w-xs font-semibold text-slate-900">
+                              Dokumen: <strong>{mySubmission.fileName || mySubmission.judul || 'Dokumen Tugas'}</strong>
+                            </span>
+                            {mySubmission.fileUrl && (
+                              <a
+                                href={mySubmission.fileUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-[10px] font-bold shadow-sm transition-colors shrink-0"
+                              >
+                                <span>Buka Link Tugas</span>
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            )}
+                          </div>
+
+                          {mySubmission.submittedAt && (
+                            <div className="text-[10px] text-slate-400">
+                              Disematkan pada: {new Date(mySubmission.submittedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                          )}
+
+                          {mySubmission.catatan && (
+                            <p className="text-[11px] text-slate-600 italic bg-slate-50 p-2 rounded-lg border border-slate-100">
+                              Catatan Anda: "{mySubmission.catatan}"
+                            </p>
+                          )}
+
+                          {mySubmission.nilai !== undefined ? (
+                            <div className="p-2.5 bg-emerald-50/60 rounded-xl border border-emerald-300 mt-2">
+                              <span className="text-[11px] text-emerald-800 font-semibold block">Nilai Dosen:</span>
+                              <span className="text-xl font-extrabold text-emerald-700">{mySubmission.nilai} / 100</span>
+                              {mySubmission.catatanDosen && (
+                                <p className="text-[11px] text-slate-700 mt-1 italic">
+                                  Umpan balik: "{mySubmission.catatanDosen}"
+                                </p>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="text-[11px] text-slate-500 italic pt-1 flex items-center gap-1">
+                              <Clock className="w-3.5 h-3.5 text-amber-500" />
+                              <span>Menunggu penilaian dan umpan balik Dosen.</span>
+                            </div>
+                          )}
+
+                          {isTaActive && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setTaskForm({
+                                  judul: mySubmission.fileName || mySubmission.judul || '',
+                                  fileUrl: mySubmission.fileUrl || '',
+                                  catatan: mySubmission.catatan || ''
+                                });
+                                setShowTaskSubmitModal(true);
+                              }}
+                              className="w-full mt-1 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors border border-slate-200"
+                            >
+                              <Edit3 className="w-3.5 h-3.5 text-slate-500" />
+                              Ganti / Perbarui Tautan Link Tugas
+                            </button>
+                          )}
                         </div>
+                      ) : (
+                        isTaActive ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTaskForm({
+                                judul: `${activeMeeting.taskTitle || ('Tugas Pertemuan ' + activeMeetingNumber)} - ${user?.name || 'Mahasiswa'}`,
+                                fileUrl: '',
+                                catatan: ''
+                              });
+                              setShowTaskSubmitModal(true);
+                            }}
+                            className="w-full py-2.5 bg-brand-800 hover:bg-brand-900 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow transition-colors"
+                          >
+                            <Share2 className="w-4 h-4" />
+                            Sematkan Link Tugas Mahasiswa
+                          </button>
+                        ) : (
+                          <div className="text-center p-3 bg-slate-100 rounded-xl text-slate-500 text-xs font-medium border border-slate-200">
+                            Semester telah ditutup. Tidak dapat mengumpulkan tugas.
+                          </div>
+                        )
+                      )}
+                    </div>
+                  )}
 
-                        <div className="max-h-60 overflow-y-auto space-y-2">
+                  {/* Daftar Pengumpulan Mahasiswa untuk Dosen & Admin */}
+                  {canManageClass && (
+                    <div className="pt-2 space-y-2">
+                      <div className="text-xs font-semibold text-slate-700 flex justify-between items-center">
+                        <span>Mahasiswa Mengumpulkan Tugas:</span>
+                        <span className="font-bold text-brand-900 bg-brand-50 px-2 py-0.5 rounded-full border border-brand-200 text-[11px]">
+                          {Object.keys(activeMeeting.submissions || {}).length} Orang
+                        </span>
+                      </div>
+
+                      {Object.keys(activeMeeting.submissions || {}).length === 0 ? (
+                        <div className="p-4 border-2 border-dashed border-slate-200 rounded-xl text-center text-xs text-slate-400">
+                          Belum ada mahasiswa yang menyematkan tugas untuk pertemuan ini.
+                        </div>
+                      ) : (
+                        <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
                           {Object.values(activeMeeting.submissions || {}).map(sub => (
-                            <div key={sub.mahasiswaId} className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs flex justify-between items-center gap-2">
+                            <div key={sub.mahasiswaId} className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs flex justify-between items-center gap-2">
                               <div>
                                 <div className="font-bold text-slate-900">{sub.mahasiswaName}</div>
-                                <div className="text-[10px] text-slate-400">NIM: {sub.nim}</div>
+                                <div className="text-[10px] text-slate-500">NIM: {sub.nim || '-'}</div>
+                                {sub.catatan && (
+                                  <div className="text-[10px] text-slate-400 italic line-clamp-1 mt-0.5">
+                                    "{sub.catatan}"
+                                  </div>
+                                )}
                               </div>
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 shrink-0">
                                 {sub.fileUrl && (
                                   <a
                                     href={sub.fileUrl}
@@ -1044,23 +1138,25 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
                                 )}
                                 {sub.nilai !== undefined ? (
                                   <button
+                                    type="button"
                                     onClick={() => {
                                       if (!isTaActive) return showErrorToast("Semester ditutup, tidak dapat mengubah nilai.");
                                       setShowGradingModal(sub);
                                       setGradingForm({ nilai: sub.nilai, feedback: sub.catatanDosen || '' });
                                     }}
-                                    className="px-2 py-1 bg-emerald-100 text-emerald-800 rounded font-bold text-xs"
+                                    className="px-2.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-lg font-bold text-xs border border-emerald-300 transition-colors"
                                   >
                                     Nilai: {sub.nilai}
                                   </button>
                                 ) : (
                                   <button
+                                    type="button"
                                     onClick={() => {
                                       if (!isTaActive) return showErrorToast("Semester ditutup, tidak dapat mengubah nilai.");
                                       setShowGradingModal(sub);
                                       setGradingForm({ nilai: 85, feedback: '' });
                                     }}
-                                    className="px-2.5 py-1 bg-brand-800 text-white rounded font-bold text-xs hover:bg-brand-900"
+                                    className="px-2.5 py-1 bg-brand-800 text-white rounded-lg font-bold text-xs hover:bg-brand-900 shadow-sm"
                                   >
                                     Beri Nilai
                                   </button>
@@ -1069,15 +1165,11 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
                             </div>
                           ))}
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
+                  )}
 
-                  </div>
-                ) : (
-                  <div className="p-4 border-2 border-dashed border-slate-200 rounded-xl text-center text-xs text-slate-400">
-                    Tidak ada penugasan terstruktur untuk pertemuan ini.
-                  </div>
-                )}
+                </div>
               </div>
 
             </div>

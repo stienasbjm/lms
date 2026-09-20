@@ -1294,29 +1294,30 @@ export async function saveMeetingAttendance(classId, meetingNumber, attendances,
    ========================================================================= */
 export async function submitAssignment(classId, meetingNumber, submissionData, user) {
   const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
-  const classItem = list.find(c => c.id === classId);
+  const classItem = list.find(c => String(c.id) === String(classId) || String(c.uid || '') === String(classId));
   if (!classItem) throw new Error("Kelas tidak ditemukan");
 
   const meeting = classItem.meetings.find(m => m.pertemuanKe === Number(meetingNumber));
   if (!meeting) throw new Error("Pertemuan tidak ditemukan");
 
+  const uid = user.uid || user.id;
   if (!meeting.submissions) meeting.submissions = {};
-  meeting.submissions[user.uid] = {
+  meeting.submissions[uid] = {
     ...submissionData,
-    mahasiswaId: user.uid,
-    mahasiswaName: user.name || user.email,
-    nim: user.nim || user.username,
+    mahasiswaId: uid,
+    mahasiswaName: user.name || user.email || 'Mahasiswa',
+    nim: user.nim || user.username || '-',
     submittedAt: new Date().toISOString()
   };
 
   await setLocal(STORAGE_KEYS.CLASSES, list);
-  await logAudit(user, 'SUBMIT_TASK', `Mahasiswa ${user.name} mengumpulkan tugas Pertemuan ${meetingNumber}`);
-  return meeting.submissions[user.uid];
+  await logAudit(user, 'SUBMIT_TASK', `Mahasiswa ${user.name || user.email} mengumpulkan tugas Pertemuan ${meetingNumber}`);
+  return meeting.submissions[uid];
 }
 
 export async function gradeSubmission(classId, meetingNumber, mhsId, nilai, feedback, user) {
   const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
-  const classItem = list.find(c => c.id === classId);
+  const classItem = list.find(c => String(c.id) === String(classId) || String(c.uid || '') === String(classId));
   if (!classItem) throw new Error("Kelas tidak ditemukan");
 
   const meeting = classItem.meetings.find(m => m.pertemuanKe === Number(meetingNumber));
@@ -1514,7 +1515,6 @@ export async function syncCollectionsToLiveFirestore(onProgress) {
       jam: c.jam || '08:00 WITA',
       ruang: c.ruang || 'Lab',
       enrolledStudents: c.enrolledStudents || [],
-      updatedAt: serverTimestamp()
     }, { merge: true });
   }
   updateStatus(`Menyiapkan ${classes.length} dokumen koleksi 'kelas_kuliah' beserta 16 pertemuan...`);
@@ -1522,8 +1522,7 @@ export async function syncCollectionsToLiveFirestore(onProgress) {
   // Eksekusi Batch Commit
   await batch.commit();
   updateStatus("✅ Commit batch ke Cloud Firestore BERHASIL! Seluruh koleksi dan data tersinkronisasi.");
-
-  return { success: true, logs };
+  return { success: true };
 }
 
 /* =========================================================================
@@ -1532,35 +1531,146 @@ export async function syncCollectionsToLiveFirestore(onProgress) {
 
 const CLASS_MESSAGES_KEY_PREFIX = 'STIE_LMS_CLASS_MESSAGES_';
 
+/**
+ * Mengambil seluruh pesan kelas perkuliahan.
+ * Menggabungkan classItem.messages, Firestore (jika live), dan localStorage
+ * untuk memastikan sinkronisasi dua arah real-time antara Dosen dan Mahasiswa.
+ */
 export async function getClassMessages(classId) {
   if (!classId) return [];
   const key = `${CLASS_MESSAGES_KEY_PREFIX}${classId}`;
-  return await getLocal(key, []);
+
+  const messageMap = new Map();
+
+  // 1. Ambil dari classItem di STORAGE_KEYS.CLASSES
+  try {
+    const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
+    const classItem = list.find(c => String(c.id) === String(classId) || String(c.uid || '') === String(classId));
+    if (classItem && Array.isArray(classItem.messages)) {
+      classItem.messages.forEach(m => {
+        if (m && m.id) messageMap.set(m.id, m);
+      });
+    }
+  } catch (err) {
+    console.warn("Gagal mengambil pesan dari classItem:", err);
+  }
+
+  // 2. Jika real Firebase live, ambil langsung dari Firestore
+  if (isRealFirebaseConfigured() && db) {
+    try {
+      // Ambil dari dokumen kelas
+      const classDocRef = doc(db, "kelas_kuliah", classId);
+      const classDocSnap = await getDoc(classDocRef);
+      if (classDocSnap.exists()) {
+        const data = classDocSnap.data();
+        if (Array.isArray(data.messages)) {
+          data.messages.forEach(m => {
+            if (m && m.id) messageMap.set(m.id, m);
+          });
+        }
+      }
+
+      // Periksa juga subkoleksi 'pesan_diskusi' jika ada pesan yang tersimpan di subkoleksi
+      try {
+        const subSnap = await getDocs(collection(db, "kelas_kuliah", classId, "pesan_diskusi"));
+        if (!subSnap.empty) {
+          subSnap.docs.forEach(d => {
+            const m = d.data();
+            const msgId = m.id || d.id;
+            if (msgId) {
+              messageMap.set(msgId, { ...m, id: msgId });
+            }
+          });
+        }
+      } catch (subErr) {
+        // subcollection query optional
+      }
+    } catch (fbErr) {
+      console.warn("Firestore getClassMessages warning:", fbErr);
+    }
+  }
+
+  // 3. Gabungkan dengan localStorage cache
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      const localMsgs = JSON.parse(raw);
+      if (Array.isArray(localMsgs)) {
+        localMsgs.forEach(m => {
+          if (m && m.id && !messageMap.has(m.id)) {
+            messageMap.set(m.id, m);
+          }
+        });
+      }
+    }
+  } catch (lsErr) {
+    console.warn("localStorage message read error:", lsErr);
+  }
+
+  const merged = Array.from(messageMap.values());
+  // Urutkan berdasarkan createdAt ASC
+  merged.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+
+  // Cache kembali ke localStorage
+  try {
+    localStorage.setItem(key, JSON.stringify(merged));
+  } catch (e) {}
+
+  return merged;
 }
 
+/**
+ * Mengirim pesan kelas baru.
+ * Disimpan ke classItem.messages di STORAGE_KEYS.CLASSES, ke Firestore,
+ * dan memicu event sinkronisasi data real-time.
+ */
 export async function sendClassMessage(classId, messageData, user) {
   if (!classId || !messageData?.text?.trim() || !user) return null;
   const key = `${CLASS_MESSAGES_KEY_PREFIX}${classId}`;
-  const existing = await getLocal(key, []);
 
+  const currentUserId = user.uid || user.id;
   const newMessage = {
     id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
     classId,
-    senderId: user.uid || user.id,
-    senderName: user.name || 'Pengguna',
-    senderRole: user.role, // 'DOSEN', 'MAHASISWA', 'ADMIN_AKADEMIK', 'SUPER_ADMIN'
+    senderId: currentUserId,
+    senderName: user.name || user.email || 'Pengguna',
+    senderRole: user.role || 'MAHASISWA', // 'DOSEN', 'MAHASISWA', 'ADMIN_AKADEMIK', 'SUPER_ADMIN'
     senderAvatar: user.avatarUrl || null,
     text: messageData.text.trim(),
     createdAt: new Date().toISOString(),
-    readBy: [user.uid || user.id]
+    readBy: [currentUserId]
   };
 
-  const updated = [...existing, newMessage];
-  await setLocal(key, updated);
+  // 1. Ambil daftar pesan yang ada
+  const existing = await getClassMessages(classId);
+  const updatedMessages = [...existing, newMessage];
 
-  // Jika real Firebase live, simpan ke subkoleksi Firestore
+  // 2. Simpan ke classItem di STORAGE_KEYS.CLASSES
+  try {
+    const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
+    const classItem = list.find(c => String(c.id) === String(classId) || String(c.uid || '') === String(classId));
+    if (classItem) {
+      classItem.messages = updatedMessages;
+      await setLocal(STORAGE_KEYS.CLASSES, list);
+    }
+  } catch (err) {
+    console.warn("Gagal mengupdate pesan ke classItem:", err);
+  }
+
+  // 3. Simpan ke key khusus localStorage
+  try {
+    localStorage.setItem(key, JSON.stringify(updatedMessages));
+  } catch (e) {}
+
+  // 4. Jika real Firebase live, simpan ke Firestore
   if (isRealFirebaseConfigured() && db) {
     try {
+      await updateDoc(doc(db, "kelas_kuliah", classId), {
+        messages: updatedMessages
+      }).catch(async () => {
+        await setDoc(doc(db, "kelas_kuliah", classId), { messages: updatedMessages }, { merge: true });
+      });
+
       await addDoc(collection(db, "kelas_kuliah", classId, "pesan_diskusi"), {
         ...newMessage,
         serverTimestamp: serverTimestamp()
@@ -1570,18 +1680,24 @@ export async function sendClassMessage(classId, messageData, user) {
     }
   }
 
-  notifyDataChange(key, updated);
+  // 5. Emit event sinkronisasi
+  notifyDataChange(key, updatedMessages);
+  notifyDataChange(STORAGE_KEYS.CLASSES, updatedMessages);
   notifyDataChange('STIE_LMS_NEW_MESSAGE_NOTIFICATION', { classId, message: newMessage });
+
   return newMessage;
 }
 
+/**
+ * Menandai pesan dalam suatu kelas sebagai telah dibaca oleh pengguna
+ */
 export async function markClassMessagesAsRead(classId, userId) {
   if (!classId || !userId) return;
   const key = `${CLASS_MESSAGES_KEY_PREFIX}${classId}`;
-  const existing = await getLocal(key, []);
+  const existing = await getClassMessages(classId);
   let hasChange = false;
 
-  const updated = existing.map(msg => {
+  const updatedMessages = existing.map(msg => {
     const readByList = msg.readBy || [];
     if (!readByList.includes(userId)) {
       hasChange = true;
@@ -1591,12 +1707,37 @@ export async function markClassMessagesAsRead(classId, userId) {
   });
 
   if (hasChange) {
-    await setLocal(key, updated);
-    notifyDataChange(key, updated);
+    try {
+      localStorage.setItem(key, JSON.stringify(updatedMessages));
+    } catch (e) {}
+
+    try {
+      const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
+      const classItem = list.find(c => String(c.id) === String(classId) || String(c.uid || '') === String(classId));
+      if (classItem) {
+        classItem.messages = updatedMessages;
+        await setLocal(STORAGE_KEYS.CLASSES, list);
+      }
+    } catch (err) {}
+
+    if (isRealFirebaseConfigured() && db) {
+      try {
+        await updateDoc(doc(db, "kelas_kuliah", classId), {
+          messages: updatedMessages
+        }).catch(async () => {
+          await setDoc(doc(db, "kelas_kuliah", classId), { messages: updatedMessages }, { merge: true });
+        });
+      } catch (e) {}
+    }
+
+    notifyDataChange(key, updatedMessages);
     notifyDataChange('STIE_LMS_NEW_MESSAGE_NOTIFICATION', { classId, markedReadBy: userId });
   }
 }
 
+/**
+ * Mengambil ringkasan notifikasi pesan masuk yang belum dibaca untuk Pengguna (Dosen & Mahasiswa)
+ */
 export async function getUserClassNotifications(user, classesList = []) {
   if (!user || !classesList || classesList.length === 0) return { unreadCount: 0, notifications: [] };
   const userId = user.uid || user.id;
@@ -1607,7 +1748,7 @@ export async function getUserClassNotifications(user, classesList = []) {
       return (cls.enrolledStudents || []).includes(userId);
     }
     if (user.role === 'DOSEN') {
-      return cls.dosenId === userId || cls.dosenEmail === user.email || cls.namaDosen === user.name;
+      return isClassAssignedToLecturer(cls, user);
     }
     return true;
   });
@@ -1615,14 +1756,32 @@ export async function getUserClassNotifications(user, classesList = []) {
   let allNotifications = [];
 
   for (const cls of myClasses) {
+    const messageMap = new Map();
+
+    // 1. Dari cls.messages
+    if (Array.isArray(cls.messages)) {
+      cls.messages.forEach(m => {
+        if (m && m.id) messageMap.set(m.id, m);
+      });
+    }
+
+    // 2. Dari localStorage
     const key = `${CLASS_MESSAGES_KEY_PREFIX}${cls.id}`;
-    let msgs = [];
     try {
       const raw = localStorage.getItem(key);
-      if (raw) msgs = JSON.parse(raw);
+      if (raw) {
+        const localMsgs = JSON.parse(raw);
+        if (Array.isArray(localMsgs)) {
+          localMsgs.forEach(m => {
+            if (m && m.id && !messageMap.has(m.id)) {
+              messageMap.set(m.id, m);
+            }
+          });
+        }
+      }
     } catch(e) {}
 
-    msgs.forEach(m => {
+    messageMap.forEach(m => {
       const isUnread = m.senderId !== userId && !(m.readBy || []).includes(userId);
       allNotifications.push({
         id: m.id,
@@ -1641,7 +1800,7 @@ export async function getUserClassNotifications(user, classesList = []) {
   }
 
   // Urutkan notifikasi dari yang paling baru
-  allNotifications.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  allNotifications.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
   const unreadCount = allNotifications.filter(n => n.isUnread).length;
 
   return {
@@ -1649,4 +1808,3 @@ export async function getUserClassNotifications(user, classesList = []) {
     notifications: allNotifications.slice(0, 15)
   };
 }
-
