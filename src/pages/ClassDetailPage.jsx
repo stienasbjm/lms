@@ -9,11 +9,13 @@ import {
   gradeSubmission,
   getUsers,
   enrollStudent,
+  unenrollStudent,
   updateMeetingMedia,
   deleteMeetingMaterial,
   getTahunAkademik,
   subscribeToDataSync
 } from '../firebase/firestoreService';
+import ManageClassStudentsModal from '../components/classes/ManageClassStudentsModal';
 import { compressImageIfNeeded, formatBytes } from '../utils/imageCompressor';
 import { 
   ArrowLeft, 
@@ -45,7 +47,7 @@ import {
 import { showSuccessAlert, showErrorAlert, showSuccessToast, showErrorToast, showConfirmDialog } from '../utils/alert';
 
 export default function ClassDetailPage({ classId, onBack }) {
-  const { user, isAdmin, isDosen, isMahasiswa } = useAuth();
+  const { user, isAdmin, isBaa, isSuperAdmin, isDosen, isMahasiswa } = useAuth();
   const [classData, setClassData] = useState(null);
   const [allUsers, setAllUsers] = useState([]);
   const [activeMeetingNumber, setActiveMeetingNumber] = useState(1);
@@ -59,6 +61,26 @@ export default function ClassDetailPage({ classId, onBack }) {
   const [showTaskSubmitModal, setShowTaskSubmitModal] = useState(false);
   const [showGradingModal, setShowGradingModal] = useState(null);
   const [showEditMeetingModal, setShowEditMeetingModal] = useState(false);
+  const [showStudentManagementModal, setShowStudentManagementModal] = useState(false);
+
+  // Quick remove student from class (Admin & BAA)
+  const handleQuickRemoveStudent = async (student) => {
+    const confirmed = await showConfirmDialog({
+      title: 'Keluarkan Mahasiswa?',
+      text: `Apakah Anda yakin ingin mengeluarkan ${student.name} (${student.nim || student.username || '-'}) dari kelas ini?`,
+      confirmButtonText: 'Ya, Keluarkan',
+      cancelButtonText: 'Batal',
+      icon: 'warning'
+    });
+    if (!confirmed) return;
+    try {
+      await unenrollStudent(classData.id, student.uid || student.id, user);
+      showSuccessToast(`${student.name} berhasil dikeluarkan dari kelas.`);
+      await loadClass();
+    } catch (err) {
+      showErrorAlert("Gagal Mengeluarkan Mahasiswa", err.message);
+    }
+  };
 
   // Form states
   const [editMeetingForm, setEditMeetingForm] = useState({
@@ -408,6 +430,17 @@ export default function ClassDetailPage({ classId, onBack }) {
                   {enrolledStudentsList.length} / {classData.kuota}
                 </div>
               </div>
+              {(isAdmin || isBaa || isSuperAdmin) && (
+                <button
+                  type="button"
+                  onClick={() => setShowStudentManagementModal(true)}
+                  className="px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold border border-white/20 flex items-center gap-1.5 transition-all shadow-sm shrink-0"
+                  title="Kelola Peserta Mahasiswa (Admin & BAA)"
+                >
+                  <Users className="w-3.5 h-3.5 text-gold-300" />
+                  <span>Kelola Mahasiswa</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -728,40 +761,71 @@ export default function ClassDetailPage({ classId, onBack }) {
 
             {/* Daftar Sinkronisasi Mahasiswa untuk Dosen & Admin */}
             <div className="space-y-2 pt-1">
-              <div className="text-[11px] font-semibold text-slate-500 flex justify-between">
+              <div className="text-[11px] font-semibold text-slate-500 flex justify-between items-center">
                 <span>Daftar Mahasiswa Mengambil MK ({enrolledStudentsList.length}):</span>
-                {canManageClass && isTaActive && (
-                  <button
-                    onClick={handleOpenAttendanceModal}
-                    className="text-brand-700 hover:underline font-bold text-xs"
-                  >
-                    Ubah Presensi
-                  </button>
-                )}
+                <div className="flex items-center gap-2">
+                  {(isAdmin || isBaa || isSuperAdmin) && (
+                    <button
+                      type="button"
+                      onClick={() => setShowStudentManagementModal(true)}
+                      className="text-brand-700 hover:text-brand-900 font-bold text-xs flex items-center gap-1 hover:underline"
+                      title="Tambah Mahasiswa Manual (Admin & BAA)"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Tambah</span>
+                    </button>
+                  )}
+                  {canManageClass && isTaActive && (
+                    <button
+                      onClick={handleOpenAttendanceModal}
+                      className="text-brand-700 hover:underline font-bold text-xs"
+                    >
+                      Ubah Presensi
+                    </button>
+                  )}
+                </div>
               </div>
 
-              <div className="max-h-48 overflow-y-auto divide-y divide-slate-100 pr-1">
-                {enrolledStudentsList.map(mhs => {
-                  const rec = existingAttendances[mhs.uid];
-                  const status = rec?.status || 'BELUM';
-                  return (
-                    <div key={mhs.uid} className="py-2 flex items-center justify-between text-xs">
-                      <div>
-                        <div className="font-bold text-slate-900">{mhs.name}</div>
-                        <div className="text-[10px] text-slate-400 font-mono">NIM: {mhs.nim || mhs.username}</div>
+              <div className="max-h-56 overflow-y-auto divide-y divide-slate-100 pr-1">
+                {enrolledStudentsList.length === 0 ? (
+                  <div className="py-4 text-center text-xs text-slate-400">
+                    Belum ada mahasiswa terdaftar.
+                  </div>
+                ) : (
+                  enrolledStudentsList.map(mhs => {
+                    const rec = existingAttendances[mhs.uid];
+                    const status = rec?.status || 'BELUM';
+                    return (
+                      <div key={mhs.uid} className="py-2 flex items-center justify-between text-xs gap-2">
+                        <div className="min-w-0">
+                          <div className="font-bold text-slate-900 truncate">{mhs.name}</div>
+                          <div className="text-[10px] text-slate-400 font-mono">NIM: {mhs.nim || mhs.username}</div>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                            status === 'HADIR' ? 'bg-emerald-50 text-emerald-700 border-emerald-300' :
+                            status === 'IZIN' ? 'bg-blue-50 text-blue-700 border-blue-300' :
+                            status === 'SAKIT' ? 'bg-amber-50 text-amber-700 border-amber-300' :
+                            status === 'ALPHA' ? 'bg-rose-50 text-rose-700 border-rose-300' :
+                            'bg-slate-100 text-slate-500 border-slate-200'
+                          }`}>
+                            {status}
+                          </span>
+                          {(isAdmin || isBaa || isSuperAdmin) && (
+                            <button
+                              type="button"
+                              onClick={() => handleQuickRemoveStudent(mhs)}
+                              title="Keluarkan mahasiswa dari kelas"
+                              className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                        status === 'HADIR' ? 'bg-emerald-50 text-emerald-700 border-emerald-300' :
-                        status === 'IZIN' ? 'bg-blue-50 text-blue-700 border-blue-300' :
-                        status === 'SAKIT' ? 'bg-amber-50 text-amber-700 border-amber-300' :
-                        status === 'ALPHA' ? 'bg-rose-50 text-rose-700 border-rose-300' :
-                        'bg-slate-100 text-slate-500 border-slate-200'
-                      }`}>
-                        {status}
-                      </span>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                )}
               </div>
             </div>
 
@@ -1407,6 +1471,16 @@ export default function ClassDetailPage({ classId, onBack }) {
           </div>
         </div>
       )}
+
+      {/* MODAL KONTROL MAHASISWA KELAS (ADMIN & BAA) */}
+      <ManageClassStudentsModal
+        isOpen={showStudentManagementModal}
+        onClose={() => setShowStudentManagementModal(false)}
+        classItem={classData}
+        onStudentsUpdated={async () => {
+          await loadClass();
+        }}
+      />
 
     </div>
   );

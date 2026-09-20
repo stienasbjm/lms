@@ -12,6 +12,7 @@ import {
   subscribeToDataSync,
   isClassAssignedToLecturer
 } from '../firebase/firestoreService';
+import ManageClassStudentsModal from '../components/classes/ManageClassStudentsModal';
 import { showSuccessToast, showErrorAlert, showConfirmDialog } from '../utils/alert';
 import { 
   BookOpen, 
@@ -51,6 +52,8 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
 
   // Modal Buka Kelas Baru (Khusus Admin BAA)
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showStudentsModal, setShowStudentsModal] = useState(false);
+  const [selectedClassForStudents, setSelectedClassForStudents] = useState(null);
   const [formData, setFormData] = useState({
     mataKuliahId: '',
     tahunAkademikId: '',
@@ -582,9 +585,21 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
                         </span>
                       )}
 
-                      {/* Tombol Aksi Edit & Hapus untuk Admin dan BAA */}
+                      {/* Tombol Aksi Kelola Mahasiswa, Edit & Hapus untuk Admin dan BAA */}
                       {isAdmin && (
                         <div className="flex items-center gap-1 ml-1">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedClassForStudents(cls);
+                              setShowStudentsModal(true);
+                            }}
+                            title="Kelola Mahasiswa Kelas (Admin & BAA)"
+                            className="p-1.5 rounded-lg bg-brand-50 hover:bg-brand-100 text-brand-800 border border-brand-200 transition-colors shadow-sm"
+                          >
+                            <Users className="w-3 h-3" />
+                          </button>
                           <button
                             type="button"
                             onClick={(e) => handleOpenEditClass(cls, e)}
@@ -635,9 +650,25 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
                       <Users className="w-3.5 h-3.5 text-slate-400" />
                       <span>{(cls.enrolledStudents || []).length} / {cls.kuota} Mahasiswa</span>
                     </div>
-                    <div className="text-[10px] text-brand-800 font-bold bg-brand-50 px-2 py-0.5 rounded-md border border-brand-200">
-                      16 Sesi RPS • Sub-CPMK OBE
-                    </div>
+                    {isAdmin ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedClassForStudents(cls);
+                          setShowStudentsModal(true);
+                        }}
+                        className="text-[11px] font-bold text-brand-800 hover:text-brand-950 bg-brand-50 hover:bg-brand-100 px-2 py-0.5 rounded-md border border-brand-200 flex items-center gap-1 transition-colors"
+                        title="Kelola Mahasiswa Kelas"
+                      >
+                        <UserPlus className="w-3 h-3" />
+                        <span>Kelola Mahasiswa</span>
+                      </button>
+                    ) : (
+                      <div className="text-[10px] text-brand-800 font-bold bg-brand-50 px-2 py-0.5 rounded-md border border-brand-200">
+                        16 Sesi RPS • Sub-CPMK OBE
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1047,6 +1078,24 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
           </div>
         </div>
       )}
+
+      {/* MODAL KELOLA MAHASISWA KELAS (ADMIN & BAA) */}
+      <ManageClassStudentsModal
+        isOpen={showStudentsModal}
+        onClose={() => {
+          setShowStudentsModal(false);
+          setSelectedClassForStudents(null);
+        }}
+        classItem={selectedClassForStudents}
+        onStudentsUpdated={async () => {
+          await loadData();
+          if (selectedClassForStudents) {
+            const updatedClasses = await getClasses();
+            const freshClass = updatedClasses.find(c => c.id === selectedClassForStudents.id);
+            if (freshClass) setSelectedClassForStudents(freshClass);
+          }
+        }}
+      />
 
     </div>
   );

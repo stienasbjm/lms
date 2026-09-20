@@ -1059,7 +1059,7 @@ export async function deleteClass(classId, user) {
   return true;
 }
 
-export async function enrollStudent(classId, mhsId, user) {
+export async function enrollStudent(classId, mhsId, user, options = {}) {
   const [list, mks, users] = await Promise.all([
     getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES),
     getLocal(STORAGE_KEYS.MK, INITIAL_MK),
@@ -1068,9 +1068,14 @@ export async function enrollStudent(classId, mhsId, user) {
   const classItem = list.find(c => String(c.id) === String(classId) || String(c.uid || '') === String(classId));
   if (!classItem) throw new Error("Kelas perkuliahan tidak ditemukan");
 
-  // FR-03.3 Pengecekan kuota
-  if ((classItem.enrolledStudents || []).length >= (classItem.kuota || 40)) {
-    throw new Error("Kuota kelas telah penuh!");
+  const actorRole = (user?.role || '').toUpperCase();
+  const isActorAdminOrBaa = actorRole === 'SUPER_ADMIN' || actorRole === 'ADMIN' || actorRole === 'ADMIN_AKADEMIK' || actorRole === 'AKADEMIK' || actorRole === 'BAA';
+
+  // Pengecekan kuota (Admin/BAA dapat memiliki opsi bypass kuota jika diberikan izin dispensasi)
+  const currentCount = (classItem.enrolledStudents || []).length;
+  const maxQuota = Number(classItem.kuota || 40);
+  if (!options.bypassQuota && currentCount >= maxQuota) {
+    throw new Error(`Kuota kelas telah penuh (${currentCount}/${maxQuota} mahasiswa)! Hubungi Bagian Akademik (BAA).`);
   }
 
   if ((classItem.enrolledStudents || []).includes(mhsId)) {
@@ -1078,10 +1083,11 @@ export async function enrollStudent(classId, mhsId, user) {
   }
 
   // Validasi Prasyarat Semester & Kesesuaian Prodi KRS Mahasiswa
+  // Jika dioperasikan oleh Admin/BAA dengan dispensasi (options.bypassRestrictions atau isActorAdminOrBaa), lewati pembatasan jika opsi aktif
   const student = users.find(u => String(u.uid || u.id) === String(mhsId)) || user;
   const mk = mks.find(m => String(m.id) === String(classItem.mataKuliahId) || m.kodeMk === classItem.kodeMk);
 
-  if (student && mk) {
+  if (!options.bypassRestrictions && !isActorAdminOrBaa && student && mk) {
     const studentSemester = student.semester ? Number(student.semester) : (
       student.angkatan ? Math.max(1, ((2026 - Number(student.angkatan)) * 2) + 1) : 1
     );
@@ -1099,7 +1105,37 @@ export async function enrollStudent(classId, mhsId, user) {
   if (!classItem.enrolledStudents) classItem.enrolledStudents = [];
   classItem.enrolledStudents.push(mhsId);
   await setLocal(STORAGE_KEYS.CLASSES, list);
-  await logAudit(user, 'ENROLL_STUDENT', `Mendaftarkan mahasiswa ${mhsId} ke kelas ${classItem.namaMk}`);
+
+  const studentLabel = student?.name ? `${student.name} (${student.nim || student.username || mhsId})` : mhsId;
+  const controllerPrefix = isActorAdminOrBaa 
+    ? `${actorRole === 'SUPER_ADMIN' || actorRole === 'ADMIN' ? 'Super Admin' : 'Admin BAA'} (${user?.name || 'Admin'}) mendaftarkan secara manual` 
+    : 'Mahasiswa mandiri mendaftar';
+  await logAudit(user, 'ENROLL_STUDENT', `${controllerPrefix} mahasiswa ${studentLabel} ke kelas ${classItem.namaMk} (${classItem.namaKelas || '-'})`);
+  return classItem;
+}
+
+export async function unenrollStudent(classId, mhsId, user) {
+  const [list, users] = await Promise.all([
+    getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES),
+    getLocal(STORAGE_KEYS.USERS, INITIAL_USERS)
+  ]);
+  const classItem = list.find(c => String(c.id) === String(classId) || String(c.uid || '') === String(classId));
+  if (!classItem) throw new Error("Kelas perkuliahan tidak ditemukan");
+
+  if (!classItem.enrolledStudents || !classItem.enrolledStudents.includes(mhsId)) {
+    throw new Error("Mahasiswa tidak terdaftar dalam kelas ini");
+  }
+
+  classItem.enrolledStudents = classItem.enrolledStudents.filter(id => String(id) !== String(mhsId));
+  await setLocal(STORAGE_KEYS.CLASSES, list);
+
+  const student = users.find(u => String(u.uid || u.id) === String(mhsId));
+  const studentLabel = student?.name ? `${student.name} (${student.nim || student.username || mhsId})` : mhsId;
+  const actorRole = (user?.role || '').toUpperCase();
+  const isActorAdmin = actorRole === 'SUPER_ADMIN' || actorRole === 'ADMIN';
+  const roleName = isActorAdmin ? 'Super Admin' : (actorRole === 'DOSEN' ? 'Dosen Pengampu' : 'Admin BAA');
+
+  await logAudit(user, 'UNENROLL_STUDENT', `${roleName} (${user?.name || 'Pengontrol'}) mengeluarkan mahasiswa ${studentLabel} dari kelas ${classItem.namaMk} (${classItem.namaKelas || '-'})`);
   return classItem;
 }
 
