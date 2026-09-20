@@ -1260,7 +1260,7 @@ export default function ClassDetailPage({ classId, onBack }) {
                 <label className="block text-slate-700 font-semibold mb-1">Judul / Deskripsi Dokumen Tugas</label>
                 <input
                   type="text"
-                  placeholder="contoh: Lembar Jawaban Studi Kasus - Ahmad Fadillah"
+                  placeholder="contoh: Lembar Jawaban Studi Kasus - Putri Maharani"
                   value={taskForm.judul}
                   onChange={e => setTaskForm({...taskForm, judul: e.target.value})}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500"

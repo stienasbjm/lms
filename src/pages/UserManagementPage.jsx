@@ -678,7 +678,7 @@ export default function UserManagementPage() {
                 <input
                   type="text"
                   required
-                  placeholder="Contoh: Ahmad Fadillah atau Dr. H. Muhammad Ramli, S.E., M.M."
+                  placeholder="Contoh: Putri Maharani atau Dr. H. Muhammad Ramli, S.E., M.M."
                   value={createForm.name}
                   onChange={e => setCreateForm({ ...createForm, name: e.target.value })}
                   className="w-full px-3 py-2 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-brand-500 font-medium"

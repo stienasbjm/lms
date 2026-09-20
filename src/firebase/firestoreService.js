@@ -122,7 +122,14 @@ export async function getLocal(key, initial) {
               if (delRaw) deletedIds = JSON.parse(delRaw);
             } catch(e) {}
             // Pastikan akun yang telah dihapus permanen masuk ke filter
-            const permanentDeleted = ['user-mhs-1789716217109', 'user-mhs-1789715558398'];
+            const permanentDeleted = [
+              'user-mhs-1789716217109', 
+              'user-mhs-1789715558398',
+              'user-mhs-1',
+              'user-mhs-2',
+              'user-mhs-3',
+              'user-mahasiswa-1789742014560'
+            ];
             permanentDeleted.forEach(pid => {
               if (!deletedIds.includes(pid)) deletedIds.push(pid);
             });
@@ -187,7 +194,14 @@ export async function getLocal(key, initial) {
       const delRaw = localStorage.getItem('STIE_LMS_DELETED_USERS');
       if (delRaw) localDeletedIds = JSON.parse(delRaw);
     } catch(e) {}
-    const permanentDeleted = ['user-mhs-1789716217109', 'user-mhs-1789715558398'];
+    const permanentDeleted = [
+      'user-mhs-1789716217109', 
+      'user-mhs-1789715558398',
+      'user-mhs-1',
+      'user-mhs-2',
+      'user-mhs-3',
+      'user-mahasiswa-1789742014560'
+    ];
     permanentDeleted.forEach(pid => {
       if (!localDeletedIds.includes(pid)) localDeletedIds.push(pid);
     });

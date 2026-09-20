@@ -86,59 +86,14 @@ export const INITIAL_USERS = [
     avatarUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80'
   },
   {
-    uid: 'user-mhs-1',
-    email: 'mahasiswa@stienas.ac.id',
-    aliasEmail: '221011001@lms.stienas.ac.id',
-    name: 'Ahmad Fadillah',
-    role: 'MAHASISWA',
-    nim: '221011001',
-    angkatan: 2022,
-    username: 'mahasiswa',
-    password: 'mhs123',
-    phone: '082155667788',
-    prodiId: 'prodi-s1-manajemen',
-    semester: 9,
-    isActive: true,
-    avatarUrl: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150&auto=format&fit=crop&q=80'
-  },
-  {
-    uid: 'user-mhs-2',
-    email: '221011002@lms.stienas.ac.id',
-    name: 'Nurul Hidayah',
-    role: 'MAHASISWA',
-    nim: '221011002',
-    angkatan: 2022,
-    username: '221011002',
-    password: 'mhs123',
-    phone: '082155998877',
-    prodiId: 'prodi-s1-manajemen',
-    semester: 9,
-    isActive: true,
-    avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80'
-  },
-  {
-    uid: 'user-mhs-3',
-    email: '221011003@lms.stienas.ac.id',
-    name: 'Muhammad Rifky',
-    role: 'MAHASISWA',
-    nim: '221011003',
-    angkatan: 2022,
-    username: '221011003',
-    password: 'mhs123',
-    phone: '082155112233',
-    prodiId: 'prodi-s1-akuntansi',
-    semester: 9,
-    isActive: true,
-    avatarUrl: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=150&auto=format&fit=crop&q=80'
-  },
-  {
     uid: 'user-mhs-4',
-    email: '261011001@lms.stienas.ac.id',
+    email: 'mahasiswa@stienas.ac.id',
+    aliasEmail: '261011001@lms.stienas.ac.id',
     name: 'Putri Maharani',
     role: 'MAHASISWA',
     nim: '261011001',
     angkatan: 2026,
-    username: '261011001',
+    username: 'mahasiswa',
     password: 'mhs123',
     phone: '082155443322',
     prodiId: 'prodi-s1-manajemen',
@@ -402,32 +357,9 @@ export const INITIAL_CLASSES = [
     kuota: 40,
     status: 'OPEN',
     progressPercentage: 25,
-    enrolledStudents: ['user-mhs-1', 'user-mhs-2'],
+    enrolledStudents: [],
     meetings: generateDefault16Meetings('Manajemen Keuangan I'),
-    grades: {
-      'user-mhs-1': {
-        mhsId: 'user-mhs-1',
-        nama: 'Ahmad Fadillah',
-        nim: '221011001',
-        nilaiTugas: 85,
-        nilaiKuis: 80,
-        nilaiUts: 88,
-        nilaiUas: 90,
-        nilaiAkhir: 86.9,
-        nilaiHuruf: 'A'
-      },
-      'user-mhs-2': {
-        mhsId: 'user-mhs-2',
-        nama: 'Nurul Hidayah',
-        nim: '221011002',
-        nilaiTugas: 75,
-        nilaiKuis: 78,
-        nilaiUts: 72,
-        nilaiUas: 80,
-        nilaiAkhir: 76.3,
-        nilaiHuruf: 'B+'
-      }
-    }
+    grades: {}
   },
   {
     id: 'kelas-akt-202-a',
@@ -446,32 +378,9 @@ export const INITIAL_CLASSES = [
     kuota: 35,
     status: 'OPEN',
     progressPercentage: 18,
-    enrolledStudents: ['user-mhs-1', 'user-mhs-3'],
+    enrolledStudents: [],
     meetings: generateDefault16Meetings('Pengantar Akuntansi II'),
-    grades: {
-      'user-mhs-1': {
-        mhsId: 'user-mhs-1',
-        nama: 'Ahmad Fadillah',
-        nim: '221011001',
-        nilaiTugas: 88,
-        nilaiKuis: 84,
-        nilaiUts: 86,
-        nilaiUas: 90,
-        nilaiAkhir: 87.5,
-        nilaiHuruf: 'A'
-      },
-      'user-mhs-3': {
-        mhsId: 'user-mhs-3',
-        nama: 'Muhammad Rifky',
-        nim: '221011003',
-        nilaiTugas: 90,
-        nilaiKuis: 85,
-        nilaiUts: 82,
-        nilaiUas: 88,
-        nilaiAkhir: 86.15,
-        nilaiHuruf: 'A'
-      }
-    }
+    grades: {}
   },
   {
     id: 'kelas-sta-201-a',
@@ -490,21 +399,9 @@ export const INITIAL_CLASSES = [
     kuota: 40,
     status: 'OPEN',
     progressPercentage: 30,
-    enrolledStudents: ['user-mhs-1', 'user-mhs-2'],
+    enrolledStudents: [],
     meetings: generateDefault16Meetings('Statistika Ekonomi & Bisnis'),
-    grades: {
-      'user-mhs-1': {
-        mhsId: 'user-mhs-1',
-        nama: 'Ahmad Fadillah',
-        nim: '221011001',
-        nilaiTugas: 82,
-        nilaiKuis: 76,
-        nilaiUts: 80,
-        nilaiUas: 84,
-        nilaiAkhir: 81.2,
-        nilaiHuruf: 'B+'
-      }
-    }
+    grades: {}
   },
   {
     id: 'kelas-eko-102-b',
@@ -523,21 +420,9 @@ export const INITIAL_CLASSES = [
     kuota: 35,
     status: 'CLOSED',
     progressPercentage: 100,
-    enrolledStudents: ['user-mhs-1'],
+    enrolledStudents: [],
     meetings: generateDefault16Meetings('Pengantar Ekonomi Makro'),
-    grades: {
-      'user-mhs-1': {
-        mhsId: 'user-mhs-1',
-        nama: 'Ahmad Fadillah',
-        nim: '221011001',
-        nilaiTugas: 85,
-        nilaiKuis: 85,
-        nilaiUts: 85,
-        nilaiUas: 85,
-        nilaiAkhir: 85.0,
-        nilaiHuruf: 'A'
-      }
-    }
+    grades: {}
   },
   {
     id: 'kelas-sim-401-a',
@@ -556,32 +441,9 @@ export const INITIAL_CLASSES = [
     kuota: 35,
     status: 'OPEN',
     progressPercentage: 20,
-    enrolledStudents: ['user-mhs-1', 'user-mhs-2', 'user-mhs-3'],
+    enrolledStudents: [],
     meetings: generateDefault16Meetings('Sistem Informasi Manajemen'),
-    grades: {
-      'user-mhs-1': {
-        mhsId: 'user-mhs-1',
-        nama: 'Ahmad Fadillah',
-        nim: '221011001',
-        nilaiTugas: 82,
-        nilaiKuis: 80,
-        nilaiUts: 85,
-        nilaiUas: 88,
-        nilaiAkhir: 84.1,
-        nilaiHuruf: 'A-'
-      },
-      'user-mhs-2': {
-        mhsId: 'user-mhs-2',
-        nama: 'Nurul Hidayah',
-        nim: '221011002',
-        nilaiTugas: 78,
-        nilaiKuis: 82,
-        nilaiUts: 76,
-        nilaiUas: 80,
-        nilaiAkhir: 78.8,
-        nilaiHuruf: 'B+'
-      }
-    }
+    grades: {}
   }
 ];
 
@@ -610,7 +472,7 @@ export const INITIAL_AUDIT_LOGS = [
     userName: 'Dra. Hj. Siti Rahmah, M.Si.',
     role: 'DOSEN',
     action: 'UPDATE_GRADE',
-    details: 'Memperbarui buku nilai mahasiswa Ahmad Fadillah (NIM: 221011001).',
+    details: 'Memperbarui buku nilai kelas perkuliahan.',
     timestamp: new Date(Date.now() - 3600000).toISOString()
   }
 ];

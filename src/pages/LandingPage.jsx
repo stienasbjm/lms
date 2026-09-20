@@ -78,11 +78,11 @@ export default function LandingPage({ onGoToLogin }) {
       role: 'MAHASISWA',
       badge: 'Mahasiswa',
       badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-      title: 'Mahasiswa (Ahmad Fadillah)',
+      title: 'Mahasiswa (Putri Maharani)',
       email: 'mahasiswa@stienas.ac.id',
       password: 'mhs123',
-      identifierExtra: 'NIM: 221011001',
-      description: 'Ahmad Fadillah (S1 Manajemen). Mempelajari modul 16 sesi, menyematkan portofolio tugas, dan memantau KHS berstandar OBE.',
+      identifierExtra: 'NIM: 261011001',
+      description: 'Putri Maharani (S1 Manajemen). Mempelajari modul 16 sesi, menyematkan portofolio tugas, dan memantau KHS berstandar OBE.',
       features: ['Akses 16 Modul Sub-CPMK', 'Sematkan Link Portofolio Tugas', 'KHS Komprehensif & Ketercapaian CPL']
     }
   ];
