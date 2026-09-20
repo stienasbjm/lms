@@ -115,13 +115,17 @@ export async function getLocal(key, initial) {
             return data;
           });
 
-          // Ambil daftar ID yang pernah dihapus secara lokal agar tidak dibangkitkan kembali
           let deletedIds = [];
           if (key === STORAGE_KEYS.USERS) {
             try {
               const delRaw = localStorage.getItem('STIE_LMS_DELETED_USERS');
               if (delRaw) deletedIds = JSON.parse(delRaw);
             } catch(e) {}
+            // Pastikan akun yang telah dihapus permanen masuk ke filter
+            const permanentDeleted = ['user-mhs-1789716217109', 'user-mhs-1789715558398'];
+            permanentDeleted.forEach(pid => {
+              if (!deletedIds.includes(pid)) deletedIds.push(pid);
+            });
           } else if (key === STORAGE_KEYS.CLASSES) {
             try {
               const delRaw = localStorage.getItem('STIE_LMS_DELETED_CLASSES');
@@ -183,6 +187,10 @@ export async function getLocal(key, initial) {
       const delRaw = localStorage.getItem('STIE_LMS_DELETED_USERS');
       if (delRaw) localDeletedIds = JSON.parse(delRaw);
     } catch(e) {}
+    const permanentDeleted = ['user-mhs-1789716217109', 'user-mhs-1789715558398'];
+    permanentDeleted.forEach(pid => {
+      if (!localDeletedIds.includes(pid)) localDeletedIds.push(pid);
+    });
   } else if (key === STORAGE_KEYS.CLASSES) {
     try {
       const delRaw = localStorage.getItem('STIE_LMS_DELETED_CLASSES');
@@ -762,6 +770,28 @@ export async function deleteUser(uid, currentUser) {
 
   const updated = list.filter(u => u.uid !== uid && u.id !== uid);
   await setLocal(STORAGE_KEYS.USERS, updated);
+
+  // Bersihkan juga mahasiswa dari seluruh kelas perkuliahan (enrolledStudents, grades, attendances)
+  try {
+    const classList = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
+    let classModified = false;
+    classList.forEach(c => {
+      if (Array.isArray(c.enrolledStudents) && c.enrolledStudents.includes(uid)) {
+        c.enrolledStudents = c.enrolledStudents.filter(id => id !== uid);
+        classModified = true;
+      }
+      if (c.grades && c.grades[uid]) {
+        delete c.grades[uid];
+        classModified = true;
+      }
+    });
+    if (classModified) {
+      await setLocal(STORAGE_KEYS.CLASSES, classList);
+    }
+  } catch (e) {
+    console.warn("Clean classes on deleteUser error:", e);
+  }
+
   await logAudit(
     currentUser, 
     'DELETE_USER', 
