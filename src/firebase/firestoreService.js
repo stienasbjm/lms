@@ -1217,7 +1217,8 @@ export async function unenrollStudent(classId, mhsId, user) {
 
 export async function updateMeeting(classId, meetingNumber, updateFields, user) {
   const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
-  const classItem = list.find(c => c.id === classId);
+  // Gunakan String coercion agar tidak gagal saat tipe id berbeda (string vs number)
+  const classItem = list.find(c => String(c.id) === String(classId) || String(c.uid || '') === String(classId));
   if (!classItem) throw new Error("Kelas tidak ditemukan");
 
   const meetingIndex = classItem.meetings.findIndex(m => m.pertemuanKe === Number(meetingNumber));
@@ -1228,7 +1229,24 @@ export async function updateMeeting(classId, meetingNumber, updateFields, user) 
     ...updateFields
   };
 
+  // Simpan ke localStorage terlebih dahulu
   await setLocal(STORAGE_KEYS.CLASSES, list);
+
+  // Langsung update field meetings ke Firestore agar persist setelah refresh
+  // (tidak mengandalkan batch write yang bisa tertimpa saat getLocal berikutnya)
+  if (isRealFirebaseConfigured() && db) {
+    try {
+      const docId = String(classItem.uid || classItem.id);
+      await updateDoc(doc(db, "kelas_kuliah", docId), {
+        meetings: classItem.meetings
+      }).catch(async () => {
+        await setDoc(doc(db, "kelas_kuliah", docId), { meetings: classItem.meetings }, { merge: true });
+      });
+    } catch (fsErr) {
+      console.warn("Firestore updateMeeting sync warning:", fsErr);
+    }
+  }
+
   await logAudit(user, 'UPDATE_MEETING', `Memperbarui Pertemuan ${meetingNumber} kelas ${classItem.namaMk}`);
   return classItem.meetings[meetingIndex];
 }
@@ -1754,6 +1772,103 @@ export async function markClassMessagesAsRead(classId, userId) {
     notifyDataChange(key, updatedMessages);
     notifyDataChange('STIE_LMS_NEW_MESSAGE_NOTIFICATION', { classId, markedReadBy: userId });
   }
+}
+
+/**
+ * Edit isi teks pesan kelas (hanya bisa dilakukan oleh pengirim asli)
+ */
+export async function editClassMessage(classId, messageId, newText, user) {
+  if (!classId || !messageId || !newText?.trim() || !user) return null;
+  const key = `${CLASS_MESSAGES_KEY_PREFIX}${classId}`;
+  const existing = await getClassMessages(classId);
+  const userId = user.uid || user.id;
+
+  const updatedMessages = existing.map(msg => {
+    if (msg.id === messageId) {
+      // Hanya pengirim asli yang bisa mengedit
+      if (msg.senderId !== userId) throw new Error('Anda tidak memiliki izin untuk mengedit pesan ini.');
+      return {
+        ...msg,
+        text: newText.trim(),
+        editedAt: new Date().toISOString(),
+        isEdited: true
+      };
+    }
+    return msg;
+  });
+
+  // Simpan ke localStorage
+  try { localStorage.setItem(key, JSON.stringify(updatedMessages)); } catch (e) {}
+
+  // Update ke classItem
+  try {
+    const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
+    const classItem = list.find(c => String(c.id) === String(classId) || String(c.uid || '') === String(classId));
+    if (classItem) {
+      classItem.messages = updatedMessages;
+      await setLocal(STORAGE_KEYS.CLASSES, list);
+    }
+  } catch (err) {}
+
+  // Update ke Firestore
+  if (isRealFirebaseConfigured() && db) {
+    try {
+      await updateDoc(doc(db, "kelas_kuliah", classId), { messages: updatedMessages })
+        .catch(async () => setDoc(doc(db, "kelas_kuliah", classId), { messages: updatedMessages }, { merge: true }));
+    } catch (e) {}
+  }
+
+  notifyDataChange(key, updatedMessages);
+  notifyDataChange(`STIE_LMS_CLASS_MESSAGES_${classId}`, updatedMessages);
+  return updatedMessages.find(m => m.id === messageId);
+}
+
+/**
+ * Hapus/tarik pesan kelas (hanya bisa dilakukan oleh pengirim asli)
+ * Pesan tidak dihapus fisik, melainkan ditandai sebagai deleted (soft delete)
+ */
+export async function deleteClassMessage(classId, messageId, user) {
+  if (!classId || !messageId || !user) return;
+  const key = `${CLASS_MESSAGES_KEY_PREFIX}${classId}`;
+  const existing = await getClassMessages(classId);
+  const userId = user.uid || user.id;
+
+  const updatedMessages = existing.map(msg => {
+    if (msg.id === messageId) {
+      if (msg.senderId !== userId) throw new Error('Anda tidak memiliki izin untuk menghapus pesan ini.');
+      return {
+        ...msg,
+        text: '',
+        isDeleted: true,
+        deletedAt: new Date().toISOString()
+      };
+    }
+    return msg;
+  });
+
+  // Simpan ke localStorage
+  try { localStorage.setItem(key, JSON.stringify(updatedMessages)); } catch (e) {}
+
+  // Update ke classItem
+  try {
+    const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
+    const classItem = list.find(c => String(c.id) === String(classId) || String(c.uid || '') === String(classId));
+    if (classItem) {
+      classItem.messages = updatedMessages;
+      await setLocal(STORAGE_KEYS.CLASSES, list);
+    }
+  } catch (err) {}
+
+  // Update ke Firestore
+  if (isRealFirebaseConfigured() && db) {
+    try {
+      await updateDoc(doc(db, "kelas_kuliah", classId), { messages: updatedMessages })
+        .catch(async () => setDoc(doc(db, "kelas_kuliah", classId), { messages: updatedMessages }, { merge: true }));
+    } catch (e) {}
+  }
+
+  notifyDataChange(key, updatedMessages);
+  notifyDataChange(`STIE_LMS_CLASS_MESSAGES_${classId}`, updatedMessages);
 }
 
 /**
