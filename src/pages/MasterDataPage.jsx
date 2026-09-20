@@ -77,8 +77,10 @@ export default function MasterDataPage() {
     isActive: true
   });
 
-  const loadAll = async () => {
-    setLoading(true);
+  const loadAll = async (isInitial = false) => {
+    if (isInitial && tas.length === 0) {
+      setLoading(true);
+    }
     try {
       const [p, t, m, u] = await Promise.all([
         getProdi(),
@@ -96,16 +98,26 @@ export default function MasterDataPage() {
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      if (isInitial) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    loadAll();
-    const unsubscribe = subscribeToDataSync(() => {
-      loadAll();
+    loadAll(true);
+    let debounceTimer = null;
+    const unsubscribe = subscribeToDataSync((detail) => {
+      if (detail && detail.key === 'STIE_LMS_LOGS') return;
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        loadAll(false);
+      }, 50);
     });
-    return () => unsubscribe();
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      unsubscribe();
+    };
   }, [user]);
 
   const handleToggleTaStatus = async (taId) => {

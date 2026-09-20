@@ -7,23 +7,35 @@ export default function LecturerActivityPage() {
   const [scores, setScores] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  async function load() {
+  async function load(isInitial = false) {
+    if (isInitial && scores.length === 0) {
+      setLoading(true);
+    }
     try {
       const data = await calculateLecturersActivityScores();
       setScores(data.sort((a, b) => b.totalScore - a.totalScore));
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      if (isInitial) {
+        setLoading(false);
+      }
     }
   }
 
   useEffect(() => {
-    load();
+    load(true);
+    let debounceTimer = null;
     const unsubscribe = subscribeToDataSync(() => {
-      load();
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        load(false);
+      }, 50);
     });
-    return () => unsubscribe();
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      unsubscribe();
+    };
   }, []);
 
   const handleExportCSV = () => {
@@ -39,7 +51,7 @@ export default function LecturerActivityPage() {
     exportToCSV('Laporan_Skor_Keaktifan_Dosen_LMS', headers, scores);
   };
 
-  if (loading) {
+  if (loading && scores.length === 0) {
     return (
       <div className="flex items-center justify-center h-64 text-xs text-slate-500">
         <Clock className="w-5 h-5 animate-spin mr-2 text-brand-600" />

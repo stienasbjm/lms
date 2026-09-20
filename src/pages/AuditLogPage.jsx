@@ -8,23 +8,36 @@ export default function AuditLogPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
 
-  async function load() {
+  async function load(isInitial = false) {
+    if (isInitial && logs.length === 0) {
+      setLoading(true);
+    }
     try {
       const data = await getAuditLogs();
       setLogs(data);
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      if (isInitial) {
+        setLoading(false);
+      }
     }
   }
 
   useEffect(() => {
-    load();
-    const unsubscribe = subscribeToDataSync(() => {
-      load();
+    load(true);
+    let debounceTimer = null;
+    const unsubscribe = subscribeToDataSync((detail) => {
+      if (detail && detail.key && detail.key !== 'STIE_LMS_LOGS') return;
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        load(false);
+      }, 50);
     });
-    return () => unsubscribe();
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      unsubscribe();
+    };
   }, []);
 
   const handleExportCSV = () => {
@@ -44,7 +57,7 @@ export default function AuditLogPage() {
            (l.details || '').toLowerCase().includes(searchTerm.toLowerCase());
   });
 
-  if (loading) {
+  if (loading && logs.length === 0) {
     return (
       <div className="flex items-center justify-center h-64 text-xs text-slate-500">
         <Clock className="w-5 h-5 animate-spin mr-2 text-brand-600" />

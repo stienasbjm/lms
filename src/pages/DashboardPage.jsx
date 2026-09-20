@@ -35,7 +35,10 @@ export default function DashboardPage({ onNavigate }) {
   const [recentLogs, setRecentLogs] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  async function loadData() {
+  async function loadData(isInitial = false) {
+    if (isInitial && classes.length === 0) {
+      setLoading(true);
+    }
     try {
       const [cls, usrs, mks, tList, logs] = await Promise.all([
         getClasses(),
@@ -52,19 +55,28 @@ export default function DashboardPage({ onNavigate }) {
     } catch (err) {
       console.error("Error loading dashboard data:", err);
     } finally {
-      setLoading(false);
+      if (isInitial) {
+        setLoading(false);
+      }
     }
   }
 
   useEffect(() => {
-    loadData();
+    loadData(true);
+    let debounceTimer = null;
     const unsubscribe = subscribeToDataSync(() => {
-      loadData();
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        loadData(false);
+      }, 50);
     });
-    return () => unsubscribe();
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      unsubscribe();
+    };
   }, [user]);
 
-  if (loading) {
+  if (loading && classes.length === 0) {
     return (
       <div className="flex items-center justify-center h-64 text-xs text-slate-500">
         <Clock className="w-5 h-5 animate-spin mr-2 text-brand-600" />

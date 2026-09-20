@@ -86,8 +86,10 @@ export default function UserManagementPage() {
     newPassword: ''
   });
 
-  const loadData = async () => {
-    setLoading(true);
+  const loadData = async (isInitial = false) => {
+    if (isInitial && users.length === 0) {
+      setLoading(true);
+    }
     try {
       const [u, p] = await Promise.all([
         getUsers(),
@@ -98,16 +100,26 @@ export default function UserManagementPage() {
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      if (isInitial) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    loadData();
-    const unsubscribe = subscribeToDataSync(() => {
-      loadData();
+    loadData(true);
+    let debounceTimer = null;
+    const unsubscribe = subscribeToDataSync((detail) => {
+      if (detail && detail.key === 'STIE_LMS_LOGS') return;
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        loadData(false);
+      }, 50);
     });
-    return () => unsubscribe();
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      unsubscribe();
+    };
   }, [currentUser]);
 
   // Otoritas Pengelolaan Akun:

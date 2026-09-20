@@ -81,8 +81,10 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
     status: 'OPEN'
   });
 
-  const loadData = async () => {
-    setLoading(true);
+  const loadData = async (isInitial = false) => {
+    if (isInitial && classes.length === 0) {
+      setLoading(true);
+    }
     try {
       const [c, m, t, u] = await Promise.all([
         getClasses(),
@@ -113,16 +115,26 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      if (isInitial) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    loadData();
-    const unsubscribe = subscribeToDataSync(() => {
-      loadData();
+    loadData(true);
+    let debounceTimer = null;
+    const unsubscribe = subscribeToDataSync((detail) => {
+      if (detail && detail.key === 'STIE_LMS_LOGS') return;
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        loadData(false);
+      }, 50);
     });
-    return () => unsubscribe();
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      unsubscribe();
+    };
   }, [user]);
 
   const handleCreateSubmit = async (e) => {
@@ -331,6 +343,15 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
     const isProdiMatch = !mk?.prodiId || !user?.prodiId || mk.prodiId === user.prodiId;
     return sem === studentCurrentSemester && isProdiMatch;
   }).length;
+
+  if (loading && classes.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-64 text-xs text-slate-500">
+        <Clock className="w-5 h-5 animate-spin mr-2 text-brand-600" />
+        Memuat daftar kelas perkuliahan...
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

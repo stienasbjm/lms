@@ -76,7 +76,7 @@ export default function ClassDetailPage({ classId, onBack }) {
     try {
       await unenrollStudent(classData.id, student.uid || student.id, user);
       showSuccessToast(`${student.name} berhasil dikeluarkan dari kelas.`);
-      await loadClass();
+      await loadClass(false);
     } catch (err) {
       showErrorAlert("Gagal Mengeluarkan Mahasiswa", err.message);
     }
@@ -107,8 +107,10 @@ export default function ClassDetailPage({ classId, onBack }) {
   const [attendanceRecords, setAttendanceRecords] = useState({});
   const [gradingForm, setGradingForm] = useState({ nilai: 85, feedback: '' });
 
-  const loadClass = async () => {
-    setLoading(true);
+  const loadClass = async (isInitial = false) => {
+    if (isInitial && !classData) {
+      setLoading(true);
+    }
     try {
       const [cls, usrs, tas] = await Promise.all([
         getClassById(classId),
@@ -125,19 +127,32 @@ export default function ClassDetailPage({ classId, onBack }) {
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      if (isInitial) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    loadClass();
-    const unsubscribe = subscribeToDataSync(() => {
-      loadClass();
+    loadClass(true);
+    let debounceTimer = null;
+    const unsubscribe = subscribeToDataSync((detail) => {
+      // Abaikan sinkronisasi audit logs agar tidak memicu re-render
+      if (detail && detail.key === 'STIE_LMS_LOGS') return;
+      if (detail && detail.key && !['STIE_LMS_CLASSES', 'STIE_LMS_USERS', 'STIE_LMS_TA'].includes(detail.key)) return;
+
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        loadClass(false);
+      }, 50);
     });
-    return () => unsubscribe();
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      unsubscribe();
+    };
   }, [classId, user]);
 
-  if (loading || !classData) {
+  if ((loading && !classData) || !classData) {
     return (
       <div className="flex items-center justify-center h-64 text-xs text-slate-500">
         <Clock className="w-5 h-5 animate-spin mr-2 text-brand-600" />
@@ -206,6 +221,28 @@ export default function ClassDetailPage({ classId, onBack }) {
     }
 
     try {
+      // Optimistic update
+      setClassData(prev => {
+        if (!prev || !prev.meetings) return prev;
+        const updatedMeetings = prev.meetings.map(m => {
+          if (m.pertemuanKe === activeMeeting.pertemuanKe) {
+            return {
+              ...m,
+              judul: editMeetingForm.judul.trim(),
+              deskripsi: editMeetingForm.deskripsi.trim(),
+              subCpmk: editMeetingForm.subCpmk.trim(),
+              indikatorObe: editMeetingForm.indikatorObe.trim(),
+              tanggal: editMeetingForm.tanggal
+            };
+          }
+          return m;
+        });
+        return { ...prev, meetings: updatedMeetings };
+      });
+
+      setShowEditMeetingModal(false);
+      showSuccessToast(`Judul & materi Pertemuan ke-${activeMeeting.pertemuanKe} berhasil disimpan!`);
+
       await updateMeeting(classId, activeMeeting.pertemuanKe, {
         judul: editMeetingForm.judul.trim(),
         deskripsi: editMeetingForm.deskripsi.trim(),
@@ -214,11 +251,10 @@ export default function ClassDetailPage({ classId, onBack }) {
         tanggal: editMeetingForm.tanggal
       }, user);
 
-      setShowEditMeetingModal(false);
-      await loadClass();
-      showSuccessToast(`Judul & materi Pertemuan ke-${activeMeeting.pertemuanKe} berhasil disimpan!`);
+      await loadClass(false);
     } catch (err) {
       showErrorAlert("Gagal Menyimpan Pertemuan", err.message);
+      await loadClass(false);
     }
   };
 
@@ -236,12 +272,31 @@ export default function ClassDetailPage({ classId, onBack }) {
     e.preventDefault();
     if (!isTaActive) return showErrorToast("Semester telah ditutup. Tindakan tidak diizinkan.");
     try {
-      await updateMeetingMedia(classId, activeMeetingNumber, mediaForm, user);
+      // Optimistic update
+      setClassData(prev => {
+        if (!prev || !prev.meetings) return prev;
+        const updatedMeetings = prev.meetings.map(m => {
+          if (m.pertemuanKe === activeMeetingNumber) {
+            return {
+              ...m,
+              videoType: mediaForm.videoType,
+              videoUrl: mediaForm.videoUrl,
+              mediaTitle: mediaForm.mediaTitle
+            };
+          }
+          return m;
+        });
+        return { ...prev, meetings: updatedMeetings };
+      });
+
       setShowMediaModal(false);
       showSuccessToast("Tautan ruang tatap muka daring diperbarui!");
-      await loadClass();
+
+      await updateMeetingMedia(classId, activeMeetingNumber, mediaForm, user);
+      await loadClass(false);
     } catch (err) {
       showErrorAlert("Gagal Memperbarui Media", err.message);
+      await loadClass(false);
     }
   };
 
@@ -268,9 +323,10 @@ export default function ClassDetailPage({ classId, onBack }) {
       setShowUploadMaterialModal(false);
       setMaterialForm({ judul: '', linkUrl: '', fileType: 'link/drive', fileUrl: '' });
       showSuccessToast("Materi Link Drive berhasil disematkan!");
-      await loadClass();
+      await loadClass(false);
     } catch (err) {
       showErrorAlert("Gagal Menyematkan Materi", err.message);
+      await loadClass(false);
     }
   };
 
@@ -287,9 +343,10 @@ export default function ClassDetailPage({ classId, onBack }) {
     try {
       await deleteMeetingMaterial(classId, activeMeetingNumber, materialId, user);
       showSuccessToast("Materi perkuliahan berhasil dihapus.");
-      await loadClass();
+      await loadClass(false);
     } catch (err) {
       showErrorAlert("Gagal Menghapus Materi", err.message);
+      await loadClass(false);
     }
   };
 
@@ -313,12 +370,32 @@ export default function ClassDetailPage({ classId, onBack }) {
   const handleSaveAttendance = async () => {
     if (!isTaActive) return showErrorToast("Semester telah ditutup. Tindakan tidak diizinkan.");
     try {
-      await saveMeetingAttendance(classId, activeMeetingNumber, attendanceRecords, user);
+      // Optimistic update: langsung mutasi state memori lokal agar tampilan presensi seketika berubah tanpa jeda / kedap-kedip
+      setClassData(prev => {
+        if (!prev || !prev.meetings) return prev;
+        const updatedMeetings = prev.meetings.map(m => {
+          if (m.pertemuanKe === activeMeetingNumber) {
+            return {
+              ...m,
+              attendances: { ...attendanceRecords }
+            };
+          }
+          return m;
+        });
+        return {
+          ...prev,
+          meetings: updatedMeetings
+        };
+      });
+
       setShowAttendanceModal(false);
       showSuccessToast("Rekap presensi pertemuan berhasil disimpan!");
-      await loadClass();
+
+      await saveMeetingAttendance(classId, activeMeetingNumber, attendanceRecords, user);
+      await loadClass(false);
     } catch (err) {
       showErrorAlert("Gagal Menyimpan Presensi", err.message);
+      await loadClass(false);
     }
   };
 
@@ -344,9 +421,10 @@ export default function ClassDetailPage({ classId, onBack }) {
       setShowTaskSubmitModal(false);
       setTaskForm({ judul: '', fileUrl: '', catatan: '' });
       showSuccessAlert("Tugas Terkumpul", "Tugas berhasil disematkan dan dikumpulkan!");
-      await loadClass();
+      await loadClass(false);
     } catch (err) {
       showErrorAlert("Gagal Mengumpulkan Tugas", err.message);
+      await loadClass(false);
     }
   };
 
@@ -367,9 +445,10 @@ export default function ClassDetailPage({ classId, onBack }) {
       );
       setShowGradingModal(null);
       showSuccessToast("Nilai tugas mahasiswa berhasil disimpan!");
-      await loadClass();
+      await loadClass(false);
     } catch (err) {
       showErrorAlert("Gagal Menyimpan Penilaian", err.message);
+      await loadClass(false);
     }
   };
 
@@ -1478,7 +1557,7 @@ export default function ClassDetailPage({ classId, onBack }) {
         onClose={() => setShowStudentManagementModal(false)}
         classItem={classData}
         onStudentsUpdated={async () => {
-          await loadClass();
+          await loadClass(false);
         }}
       />
 
