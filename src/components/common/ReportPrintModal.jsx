@@ -41,7 +41,33 @@ export default function ReportPrintModal({
     if (list.length === 0) return null;
 
     if (type === 'GRADEBOOK' && classData) {
-      // 1. Cek langsung dari id prodi pada kelas
+      // 1. Cek relasi dari Mata Kuliah (mks)
+      const mk = (mks || []).find(m => 
+        (classData.mataKuliahId && m.id === classData.mataKuliahId) ||
+        (classData.kodeMk && m.kodeMk?.toUpperCase() === classData.kodeMk.toUpperCase()) ||
+        (classData.namaMk && m.namaMk?.toLowerCase() === classData.namaMk.toLowerCase())
+      );
+
+      // 2. Deteksi akurat berbasis Kode MK atau Nama MK (Akuntansi vs Manajemen)
+      const kode = (classData.kodeMk || mk?.kodeMk || '').toUpperCase();
+      const nama = (classData.namaMk || mk?.namaMk || '').toLowerCase();
+
+      if (kode.startsWith('AKT') || kode.startsWith('AK') || nama.includes('akuntan')) {
+        const akt = list.find(p => p.namaProdi?.toLowerCase().includes('akuntansi') || p.id?.includes('akuntansi') || p.kodeProdi === '62201');
+        if (akt) return akt;
+      }
+
+      if (kode.startsWith('MNJ') || kode.startsWith('BIS') || kode.startsWith('MGT') || kode.startsWith('MAN') || kode.startsWith('STA') || kode.startsWith('SIM') || nama.includes('manajemen') || nama.includes('bisnis')) {
+        const mnj = list.find(p => p.namaProdi?.toLowerCase().includes('manajemen') || p.id?.includes('manajemen') || p.kodeProdi === '61201');
+        if (mnj) return mnj;
+      }
+
+      if (mk?.prodiId) {
+        const found = list.find(p => p.id === mk.prodiId);
+        if (found) return found;
+      }
+
+      // 3. Cek langsung dari id prodi pada kelas jika ada
       if (classData.prodiId) {
         const found = list.find(p => p.id === classData.prodiId);
         if (found) return found;
@@ -50,41 +76,29 @@ export default function ReportPrintModal({
         const found = list.find(p => p.namaProdi?.toLowerCase() === classData.prodi.toLowerCase() || p.id === classData.prodi);
         if (found) return found;
       }
-
-      // 2. Cek relasi dari Mata Kuliah (mks)
-      const mk = (mks || []).find(m => 
-        (classData.mataKuliahId && m.id === classData.mataKuliahId) ||
-        (classData.kodeMk && m.kodeMk?.toUpperCase() === classData.kodeMk.toUpperCase()) ||
-        (classData.namaMk && m.namaMk?.toLowerCase() === classData.namaMk.toLowerCase())
-      );
-      if (mk?.prodiId) {
-        const found = list.find(p => p.id === mk.prodiId);
-        if (found) return found;
-      }
-
-      // 3. Deteksi akurat berbasis Kode MK atau Nama MK (Akuntansi vs Manajemen)
-      const kode = (classData.kodeMk || mk?.kodeMk || '').toUpperCase();
-      const nama = (classData.namaMk || mk?.namaMk || '').toLowerCase();
-
-      if (kode.startsWith('AKT') || kode.startsWith('AK') || nama.includes('akuntan')) {
-        const akt = list.find(p => p.namaProdi?.toLowerCase().includes('akuntansi') || p.id?.includes('akuntansi'));
-        if (akt) return akt;
-      }
-
-      if (kode.startsWith('MNJ') || kode.startsWith('BIS') || kode.startsWith('MGT') || kode.startsWith('MAN') || nama.includes('manajemen') || nama.includes('bisnis')) {
-        const mnj = list.find(p => p.namaProdi?.toLowerCase().includes('manajemen') || p.id?.includes('manajemen'));
-        if (mnj) return mnj;
-      }
     }
 
     if (type === 'KHS') {
-      // 1. Cek prodiId mahasiswa
+      // 1. Deteksi dari mata kuliah di KHS jika ada
+      if (khsRows && khsRows.length > 0) {
+        const aktCount = khsRows.filter(r => (r.kodeMk || '').toUpperCase().startsWith('AKT') || (r.kodeMk || '').toUpperCase().startsWith('AK') || (r.namaMk || '').toLowerCase().includes('akuntansi')).length;
+        const mnjCount = khsRows.filter(r => (r.kodeMk || '').toUpperCase().startsWith('MNJ') || (r.kodeMk || '').toUpperCase().startsWith('BIS') || (r.namaMk || '').toLowerCase().includes('manajemen')).length;
+        if (aktCount > 0 && aktCount >= mnjCount) {
+          const akt = list.find(p => p.namaProdi?.toLowerCase().includes('akuntansi') || p.id?.includes('akuntansi') || p.kodeProdi === '62201');
+          if (akt) return akt;
+        } else if (mnjCount > 0 && mnjCount > aktCount) {
+          const mnj = list.find(p => p.namaProdi?.toLowerCase().includes('manajemen') || p.id?.includes('manajemen') || p.kodeProdi === '61201');
+          if (mnj) return mnj;
+        }
+      }
+
+      // 2. Cek prodiId mahasiswa
       if (student?.prodiId) {
         const found = list.find(p => p.id === student.prodiId);
         if (found) return found;
       }
 
-      // 2. Cek nama prodi mahasiswa
+      // 3. Cek nama prodi mahasiswa
       if (student?.prodi) {
         const stdProdiLower = student.prodi.toLowerCase();
         const found = list.find(p => 
@@ -95,48 +109,67 @@ export default function ReportPrintModal({
         );
         if (found) return found;
       }
-
-      // 3. Deteksi dari mata kuliah di KHS jika ada
-      if (khsRows && khsRows.length > 0) {
-        const aktCount = khsRows.filter(r => (r.kodeMk || '').toUpperCase().startsWith('AKT') || (r.namaMk || '').toLowerCase().includes('akuntansi')).length;
-        const mnjCount = khsRows.filter(r => (r.kodeMk || '').toUpperCase().startsWith('MNJ') || (r.namaMk || '').toLowerCase().includes('manajemen')).length;
-        if (aktCount > mnjCount) {
-          const akt = list.find(p => p.namaProdi?.toLowerCase().includes('akuntansi'));
-          if (akt) return akt;
-        } else if (mnjCount > 0) {
-          const mnj = list.find(p => p.namaProdi?.toLowerCase().includes('manajemen'));
-          if (mnj) return mnj;
-        }
-      }
     }
 
     // Default fallback
     return list[0];
   })();
 
-  const studentProdiName = targetProdi ? targetProdi.namaProdi : (student?.prodi || (classData ? 'S1 Manajemen' : 'S1 Manajemen'));
+  const isAkuntansi = Boolean(
+    targetProdi?.namaProdi?.toLowerCase().includes('akuntansi') || 
+    targetProdi?.id?.includes('akuntansi') ||
+    targetProdi?.kodeProdi === '62201' ||
+    (type === 'GRADEBOOK' && (
+      (classData?.kodeMk || '').toUpperCase().startsWith('AKT') ||
+      (classData?.kodeMk || '').toUpperCase().startsWith('AK') ||
+      (classData?.namaMk || '').toLowerCase().includes('akuntan')
+    ))
+  );
+
+  const officialKaprodi = isAkuntansi ? {
+    nama: 'Hj. Nurul Fadhilah, S.E., M.Ak., Ak., CA',
+    nuptk: '1124018201',
+    namaProdi: 'S1 Akuntansi'
+  } : {
+    nama: 'Dr. H. Muhammad Ramli, S.E., M.M.',
+    nuptk: '1102046801',
+    namaProdi: 'S1 Manajemen'
+  };
+
+  const studentProdiName = targetProdi?.namaProdi || officialKaprodi.namaProdi;
 
   // State Pejabat Ketua Program Studi yang dapat diedit manual
-  const [kaprodiName, setKaprodiName] = useState('Dr. H. Muhammad Ramli, S.E., M.M.');
-  const [kaprodiNip, setKaprodiNip] = useState('1102046801');
+  const [kaprodiName, setKaprodiName] = useState(officialKaprodi.nama);
+  const [kaprodiNip, setKaprodiNip] = useState(officialKaprodi.nuptk);
   const [isEditingKaprodi, setIsEditingKaprodi] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveFeedback, setSaveFeedback] = useState('');
 
   useEffect(() => {
-    if (targetProdi) {
-      const isAkuntansi = targetProdi.namaProdi?.toLowerCase().includes('akuntansi') || targetProdi.id?.includes('akuntansi');
-      const defaultName = isAkuntansi 
-        ? 'Hj. Nurul Fadhilah, S.E., M.Ak., Ak., CA' 
-        : 'Dr. H. Muhammad Ramli, S.E., M.M.';
-      const defaultNip = isAkuntansi 
-        ? '1124018201' 
-        : '1102046801';
+    let resolvedName = officialKaprodi.nama;
+    let resolvedNip = officialKaprodi.nuptk;
 
-      setKaprodiName(targetProdi.namaKaprodi || defaultName);
-      setKaprodiNip(targetProdi.nuptkKaprodi || targetProdi.nidnKaprodi || defaultNip);
+    if (targetProdi) {
+      if (isAkuntansi) {
+        if (targetProdi.namaKaprodi && !targetProdi.namaKaprodi.includes('Ramli')) {
+          resolvedName = targetProdi.namaKaprodi;
+        }
+        if (targetProdi.nuptkKaprodi && targetProdi.nuptkKaprodi !== '1102046801') {
+          resolvedNip = targetProdi.nuptkKaprodi;
+        }
+      } else {
+        if (targetProdi.namaKaprodi && !targetProdi.namaKaprodi.includes('Fadhilah')) {
+          resolvedName = targetProdi.namaKaprodi;
+        }
+        if (targetProdi.nuptkKaprodi && targetProdi.nuptkKaprodi !== '1124018201') {
+          resolvedNip = targetProdi.nuptkKaprodi;
+        }
+      }
     }
-  }, [targetProdi, isOpen]);
+
+    setKaprodiName(resolvedName);
+    setKaprodiNip(resolvedNip);
+  }, [targetProdi, isAkuntansi, isOpen]);
 
   if (!isOpen) return null;
 
@@ -163,18 +196,8 @@ export default function ReportPrintModal({
   };
 
   const handleResetKaprodi = () => {
-    if (targetProdi) {
-      const isAkuntansi = targetProdi.namaProdi?.toLowerCase().includes('akuntansi') || targetProdi.id?.includes('akuntansi');
-      const defaultName = isAkuntansi 
-        ? 'Hj. Nurul Fadhilah, S.E., M.Ak., Ak., CA' 
-        : 'Dr. H. Muhammad Ramli, S.E., M.M.';
-      const defaultNip = isAkuntansi 
-        ? '1124018201' 
-        : '1102046801';
-
-      setKaprodiName(targetProdi.namaKaprodi || defaultName);
-      setKaprodiNip(targetProdi.nuptkKaprodi || targetProdi.nidnKaprodi || defaultNip);
-    }
+    setKaprodiName(officialKaprodi.nama);
+    setKaprodiNip(officialKaprodi.nuptk);
   };
 
   const currentDateFormatted = new Intl.DateTimeFormat('id-ID', {
@@ -371,9 +394,6 @@ export default function ReportPrintModal({
                 <h1 className="text-sm sm:text-base font-black uppercase tracking-wide text-slate-950 leading-tight">
                   (STIENAS) BANJARMASIN
                 </h1>
-                <p className="text-[10px] font-bold text-slate-800 uppercase tracking-wider mt-0.5">
-                  UPZ STIE NASIONAL BANJARMASIN
-                </p>
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-900 mt-0.5">
                   BAGIAN ADMINISTRASI AKADEMIK (BAA)
                 </p>
@@ -580,7 +600,7 @@ export default function ReportPrintModal({
                   <div>
                     <p className="text-[10px] text-slate-500">Banjarmasin, {currentDateFormatted}</p>
                     <p className="font-bold text-slate-900 flex items-center justify-center gap-1">
-                      <span>Ketua Program Studi {targetProdi?.namaProdi || ''}</span>
+                      <span>Ketua Program Studi {studentProdiName}</span>
                       {canEditKaprodi && (
                         <button
                           type="button"
@@ -726,7 +746,7 @@ export default function ReportPrintModal({
                   <div>
                     <p className="text-[10px] text-slate-500">Mengetahui,</p>
                     <p className="font-bold text-slate-900 flex items-center justify-center gap-1">
-                      <span>Ketua Program Studi {targetProdi?.namaProdi || ''}</span>
+                      <span>Ketua Program Studi {studentProdiName}</span>
                       {canEditKaprodi && (
                         <button
                           type="button"

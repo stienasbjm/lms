@@ -389,14 +389,40 @@ export async function getFakultas() {
 
 export async function getProdi() {
   const list = await getLocal(STORAGE_KEYS.PRODI, INITIAL_PRODI);
-  return list.map(item => {
-    const init = INITIAL_PRODI.find(p => p.id === item.id || p.kodeProdi === item.kodeProdi);
+  let hasCorrection = false;
+  const corrected = list.map(item => {
+    const isAkt = item.id === 'prodi-s1-akuntansi' || item.namaProdi?.toLowerCase().includes('akuntansi') || item.kodeProdi === '62201';
+    const isMnj = item.id === 'prodi-s1-manajemen' || item.namaProdi?.toLowerCase().includes('manajemen') || item.kodeProdi === '61201';
+
+    let namaKaprodi = item.namaKaprodi;
+    let nuptkKaprodi = item.nuptkKaprodi || item.nidnKaprodi;
+
+    if (isAkt) {
+      if (!namaKaprodi || namaKaprodi.includes('Ramli') || !nuptkKaprodi || nuptkKaprodi === '1102046801') {
+        namaKaprodi = 'Hj. Nurul Fadhilah, S.E., M.Ak., Ak., CA';
+        nuptkKaprodi = '1124018201';
+        hasCorrection = true;
+      }
+    } else if (isMnj) {
+      if (!namaKaprodi || namaKaprodi.includes('Fadhilah') || !nuptkKaprodi || nuptkKaprodi === '1124018201') {
+        namaKaprodi = 'Dr. H. Muhammad Ramli, S.E., M.M.';
+        nuptkKaprodi = '1102046801';
+        hasCorrection = true;
+      }
+    }
+
     return {
       ...item,
-      namaKaprodi: item.namaKaprodi || init?.namaKaprodi || 'Dr. H. Muhammad Ramli, S.E., M.M.',
-      nuptkKaprodi: item.nuptkKaprodi || item.nidnKaprodi || init?.nuptkKaprodi || '1102046801'
+      namaKaprodi: namaKaprodi || (isAkt ? 'Hj. Nurul Fadhilah, S.E., M.Ak., Ak., CA' : 'Dr. H. Muhammad Ramli, S.E., M.M.'),
+      nuptkKaprodi: nuptkKaprodi || (isAkt ? '1124018201' : '1102046801')
     };
   });
+
+  if (hasCorrection) {
+    await setLocal(STORAGE_KEYS.PRODI, corrected);
+  }
+
+  return corrected;
 }
 
 export async function updateProdi(prodiId, updateData, user) {

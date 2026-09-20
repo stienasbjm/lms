@@ -159,6 +159,7 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
         namaMk: selectedMk.namaMk,
         kodeMk: selectedMk.kodeMk,
         sks: selectedMk.sks,
+        prodiId: selectedMk.prodiId || '',
         namaTa: selectedTa?.namaTa || '2026/2027 Ganjil',
         dosenId: selectedDosen?.uid || selectedDosen?.id || '',
         namaDosen: selectedDosen?.name || 'Dosen Belum Ditentukan',
@@ -192,11 +193,13 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
     setShowEditModal(true);
   };
 
-  // Handler Submit Edit Kelas
-  const handleEditSubmit = async (e) => {
+  // Handler Simpan Perubahan Kelas (Admin & BAA)
+  const handleUpdateClass = async (e) => {
     e.preventDefault();
-    if (!isAdmin) {
-      showErrorAlert("Akses Ditolak", "Hanya Admin dan BAA yang memiliki wewenang mengubah data kelas.");
+    if (!selectedClassToEdit) return;
+
+    if (!editFormData.mataKuliahId || !editFormData.tahunAkademikId) {
+      showErrorAlert("Validasi Form Gagal", "Mata Kuliah dan Semester wajib dipilih.");
       return;
     }
 
@@ -211,6 +214,7 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
         namaMk: selectedMk?.namaMk || selectedClassToEdit.namaMk,
         kodeMk: selectedMk?.kodeMk || selectedClassToEdit.kodeMk,
         sks: selectedMk?.sks || selectedClassToEdit.sks,
+        prodiId: selectedMk?.prodiId || selectedClassToEdit.prodiId || '',
         tahunAkademikId: selectedTa?.id || selectedClassToEdit.tahunAkademikId,
         namaTa: selectedTa?.namaTa || selectedClassToEdit.namaTa,
         dosenId: selectedDosen?.uid || selectedDosen?.id || selectedClassToEdit.dosenId,
