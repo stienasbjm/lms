@@ -173,13 +173,21 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
 
   // Handler: Buka modal konfigurasi tugas oleh Dosen
   const handleOpenTaskConfig = () => {
+    let deadlineStr = '';
+    if (activeMeeting.taskDeadline) {
+      try {
+        const d = new Date(activeMeeting.taskDeadline);
+        if (!isNaN(d.getTime())) {
+          deadlineStr = d.toISOString().slice(0, 16);
+        }
+      } catch (e) {}
+    }
+
     setTaskConfigForm({
       taskTitle: activeMeeting.taskTitle || `Tugas Studi Kasus Pertemuan ${activeMeetingNumber}`,
       taskDesc: activeMeeting.taskDesc || '',
       taskWeight: activeMeeting.taskWeight || '10%',
-      taskDeadline: activeMeeting.taskDeadline
-        ? new Date(activeMeeting.taskDeadline).toISOString().slice(0, 16)
-        : '',
+      taskDeadline: deadlineStr,
       isTaskOpen: activeMeeting.isTaskOpen !== false,
       hasTask: activeMeeting.hasTask !== false
     });
@@ -188,29 +196,42 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
 
   // Handler: Simpan konfigurasi tugas oleh Dosen
   const handleSaveTaskConfig = async (e) => {
-    e.preventDefault();
+    e?.preventDefault?.();
     if (!isTaActive) return showErrorToast('Semester telah ditutup. Tindakan tidak diizinkan.');
     try {
+      let deadlineIso = null;
+      if (taskConfigForm.taskDeadline) {
+        try {
+          const d = new Date(taskConfigForm.taskDeadline);
+          if (!isNaN(d.getTime())) {
+            deadlineIso = d.toISOString();
+          }
+        } catch (e) {}
+      }
+
       const updatedFields = {
-        taskTitle: taskConfigForm.taskTitle.trim(),
-        taskDesc: taskConfigForm.taskDesc.trim(),
-        taskWeight: taskConfigForm.taskWeight,
-        taskDeadline: taskConfigForm.taskDeadline ? new Date(taskConfigForm.taskDeadline).toISOString() : null,
-        isTaskOpen: taskConfigForm.isTaskOpen,
-        hasTask: taskConfigForm.hasTask
+        taskTitle: (taskConfigForm.taskTitle || '').trim() || `Tugas Studi Kasus Pertemuan ${activeMeetingNumber}`,
+        taskDesc: (taskConfigForm.taskDesc || '').trim(),
+        taskWeight: taskConfigForm.taskWeight || '10%',
+        taskDeadline: deadlineIso,
+        isTaskOpen: Boolean(taskConfigForm.isTaskOpen),
+        hasTask: Boolean(taskConfigForm.hasTask)
       };
-      // Optimistic update — UI langsung diperbarui tanpa perlu loadClass
+
+      // 1. Optimistic update — UI langsung diperbarui seketika
       setClassData(prev => {
-        if (!prev) return prev;
+        if (!prev || !prev.meetings) return prev;
         const updatedMeetings = prev.meetings.map(m =>
           m.pertemuanKe === activeMeetingNumber ? { ...m, ...updatedFields } : m
         );
         return { ...prev, meetings: updatedMeetings };
       });
+
       setShowTaskConfigModal(false);
-      showSuccessToast(`Pengaturan Tugas Pertemuan ${activeMeetingNumber} berhasil disimpan!`);
+      showSuccessToast(`Pengaturan Tugas Pertemuan ${activeMeetingNumber} berhasil disimpan! (Status: ${updatedFields.isTaskOpen ? 'DIBUKA' : 'DITUTUP'})`);
+
+      // 2. Simpan permanen ke database
       await updateMeeting(classId, activeMeetingNumber, updatedFields, user);
-      // TIDAK memanggil loadClass(false) — optimistic update sudah menjaga state UI
     } catch (err) {
       showErrorAlert('Gagal Menyimpan Konfigurasi Tugas', err.message);
       await loadClass(false); // Rollback saat error
@@ -450,7 +471,7 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
 
   const activeMeeting = classData.meetings.find(m => m.pertemuanKe === activeMeetingNumber) || classData.meetings[0];
   const enrolledStudentsList = allUsers.filter(u => (classData.enrolledStudents || []).includes(u.uid));
-  const isLecturerOfThisClass = isDosen && classData.dosenId === user.uid;
+  const isLecturerOfThisClass = isDosen && isClassAssignedToLecturer(classData, user);
   const canManageClass = isAdmin || isLecturerOfThisClass;
 
   // Buka modal edit judul & rincian pertemuan (Dosen)
@@ -770,6 +791,16 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
               <p className="text-xs text-slate-300 mt-1">
                 Dosen Pengampu: <strong className="text-white">{classData.namaDosen}</strong> • {classData.sks} SKS • {classData.hari}, {classData.jam} ({classData.ruang})
               </p>
+              {Array.isArray(classData.teamTeaching) && classData.teamTeaching.length > 0 && (
+                <p className="text-[11px] text-amber-200 mt-0.5 font-medium">
+                  Tim Dosen (Team Teaching): <strong className="text-white">{
+                    classData.teamTeaching.map(tUid => {
+                      const d = allUsers.find(u => (u.uid || u.id) === (tUid?.uid || tUid));
+                      return d ? d.name : (tUid?.name || tUid);
+                    }).join(', ')
+                  }</strong>
+                </p>
+              )}
             </div>
 
             <div className="flex items-center gap-3">
@@ -975,13 +1006,13 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
                         className={`px-3 py-1.5 border rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-sm ${
                           activeMeeting.isTaskOpen === false
                             ? 'bg-rose-50 hover:bg-rose-100 text-rose-900 border-rose-200'
-                            : 'bg-teal-50 hover:bg-teal-100 text-teal-900 border-teal-200'
+                            : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border-emerald-200'
                         }`}
                       >
                         {activeMeeting.isTaskOpen === false ? (
                           <><Lock className="w-3.5 h-3.5 text-rose-600" /><span>Tugas Ditutup</span></>
                         ) : (
-                          <><Unlock className="w-3.5 h-3.5 text-teal-600" /><span>Tugas Dibuka</span></>
+                          <><Unlock className="w-3.5 h-3.5 text-emerald-600" /><span>Tugas Dibuka</span></>
                         )}
                       </button>
                       {/* Konfigurasi Tugas */}
@@ -1204,7 +1235,7 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
                         ? 'bg-rose-100 text-rose-800 border-rose-300'
                         : 'bg-emerald-100 text-emerald-800 border-emerald-300'
                     }`}>
-                      {activeMeeting.isTaskOpen === false ? 'Pengumpulan Ditutup' : 'Pengumpulan Terbuka'}
+                      {activeMeeting.isTaskOpen === false ? 'Pengumpulan Ditutup' : 'Pengumpulan Dibuka'}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
@@ -2466,29 +2497,54 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
                     </div>
                   </div>
 
-                  {/* Toggle buka/tutup pengumpulan */}
-                  <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
-                    <div>
-                      <div className="font-bold text-slate-900 text-xs">Status Pengumpulan Tugas</div>
-                      <div className="text-[11px] text-slate-500 mt-0.5">
-                        {taskConfigForm.isTaskOpen
-                          ? 'Mahasiswa dapat mengumpulkan tugas'
-                          : 'Pengumpulan tugas telah ditutup'}
+                  {/* Toggle buka/tutup pengumpulan tugas */}
+                  <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div>
+                        <div className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
+                          <span>Status Pengumpulan Tugas:</span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            taskConfigForm.isTaskOpen 
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' 
+                              : 'bg-rose-100 text-rose-800 border border-rose-300'
+                          }`}>
+                            {taskConfigForm.isTaskOpen ? 'DIBUKA (Aktif)' : 'DITUTUP (Terkunci)'}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-500 mt-0.5">
+                          {taskConfigForm.isTaskOpen
+                            ? 'Mahasiswa dapat menyematkan dan memperbarui tautan tugas.'
+                            : 'Pengumpulan ditutup. Mahasiswa tidak dapat mengunggah tugas.'}
+                        </div>
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setTaskConfigForm(f => ({ ...f, isTaskOpen: !f.isTaskOpen }))}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
-                        taskConfigForm.isTaskOpen
-                          ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                          : 'bg-rose-50 text-rose-800 border-rose-300'
-                      }`}
-                    >
-                      {taskConfigForm.isTaskOpen
-                        ? <><ToggleRight className="w-4 h-4 text-emerald-600" /> Terbuka</>
-                        : <><ToggleLeft className="w-4 h-4 text-rose-400" /> Ditutup</>}
-                    </button>
+
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setTaskConfigForm(f => ({ ...f, isTaskOpen: true }))}
+                        className={`py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all border ${
+                          taskConfigForm.isTaskOpen
+                            ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm ring-2 ring-emerald-200'
+                            : 'bg-white text-slate-600 hover:bg-slate-100 border-slate-200'
+                        }`}
+                      >
+                        <Unlock className="w-3.5 h-3.5" />
+                        <span>Buka Pengumpulan</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTaskConfigForm(f => ({ ...f, isTaskOpen: false }))}
+                        className={`py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all border ${
+                          !taskConfigForm.isTaskOpen
+                            ? 'bg-rose-600 text-white border-rose-700 shadow-sm ring-2 ring-rose-200'
+                            : 'bg-white text-slate-600 hover:bg-slate-100 border-slate-200'
+                        }`}
+                      >
+                        <Lock className="w-3.5 h-3.5" />
+                        <span>Tutup Pengumpulan</span>
+                      </button>
+                    </div>
                   </div>
                 </>
               )}

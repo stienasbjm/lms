@@ -58,6 +58,7 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
     mataKuliahId: '',
     tahunAkademikId: '',
     dosenId: '',
+    teamTeaching: [],
     namaKelas: 'A',
     ruang: 'Ruang Teori 101',
     hari: 'Senin',
@@ -73,6 +74,7 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
     mataKuliahId: '',
     tahunAkademikId: '',
     dosenId: '',
+    teamTeaching: [],
     namaKelas: 'A',
     ruang: 'Ruang Teori 101',
     hari: 'Senin',
@@ -156,6 +158,7 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
     try {
       await createClass({
         ...formData,
+        teamTeaching: formData.teamTeaching || [],
         namaMk: selectedMk.namaMk,
         kodeMk: selectedMk.kodeMk,
         sks: selectedMk.sks,
@@ -183,6 +186,7 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
       mataKuliahId: cls.mataKuliahId || '',
       tahunAkademikId: cls.tahunAkademikId || '',
       dosenId: cls.dosenId || '',
+      teamTeaching: Array.isArray(cls.teamTeaching) ? cls.teamTeaching : [],
       namaKelas: cls.namaKelas || 'A',
       ruang: cls.ruang || 'Ruang Teori 101',
       hari: cls.hari || 'Senin',
@@ -210,6 +214,7 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
     try {
       await updateClass(selectedClassToEdit.id, {
         ...editFormData,
+        teamTeaching: editFormData.teamTeaching || [],
         mataKuliahId: selectedMk?.id || selectedClassToEdit.mataKuliahId,
         namaMk: selectedMk?.namaMk || selectedClassToEdit.namaMk,
         kodeMk: selectedMk?.kodeMk || selectedClassToEdit.kodeMk,
@@ -334,7 +339,7 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
 
     // 2. KETENTUAN KHUSUS DOSEN: HANYA TAMPILKAN KELAS YANG DIDAFTARKAN/DITUGASKAN OLEH BAA
     if (isDosen) {
-      if (!isClassAssignedToLecturer(cls, user, mks)) return false;
+      if (!isClassAssignedToLecturer(cls, user)) return false;
     }
 
     // 3. Sub-filter Mahasiswa (OBE KRS Rule)
@@ -357,7 +362,7 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
   const totalClassesInSemester = classes.filter(c => 
     selectedSemesterId === 'ALL' || c.tahunAkademikId === selectedSemesterId || c.namaTa === selectedTa?.namaTa
   );
-  const myDosenClassesCount = totalClassesInSemester.filter(c => isClassAssignedToLecturer(c, user, mks)).length;
+  const myDosenClassesCount = totalClassesInSemester.filter(c => isClassAssignedToLecturer(c, user)).length;
   const myEnrolledClassesCount = totalClassesInSemester.filter(c => (c.enrolledStudents || []).includes(user?.uid)).length;
   const mySemesterClassesCount = totalClassesInSemester.filter(c => {
     const mk = mks.find(m => m.id === c.mataKuliahId || m.kodeMk === c.kodeMk);
@@ -584,7 +589,7 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
           {filteredClasses.map(cls => {
             const isEnrolled = (cls.enrolledStudents || []).includes(user?.uid);
             const isFull = (cls.enrolledStudents || []).length >= (cls.kuota || 40);
-            const isLecturer = isDosen && isClassAssignedToLecturer(cls, user, mks);
+            const isLecturer = isDosen && isClassAssignedToLecturer(cls, user);
             const classTa = tas.find(t => t.id === cls.tahunAkademikId || t.namaTa === cls.namaTa);
             const isClassSemesterActive = classTa ? classTa.isActive : false;
 
@@ -690,8 +695,18 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
 
                   <div className="text-xs text-slate-500 space-y-1">
                     <div className="flex items-center gap-1.5">
-                      <span className="font-semibold text-slate-700">Dosen:</span> {cls.namaDosen}
+                      <span className="font-semibold text-slate-700">Dosen Pengampu:</span> {cls.namaDosen}
                     </div>
+                    {Array.isArray(cls.teamTeaching) && cls.teamTeaching.length > 0 && (
+                      <div className="text-[11px] text-purple-800 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                        <span className="font-semibold">Team Teaching:</span> {
+                          cls.teamTeaching.map(tUid => {
+                            const d = dosenList.find(usr => (usr.uid || usr.id) === (tUid?.uid || tUid));
+                            return d ? d.name : (tUid?.name || tUid);
+                          }).join(', ')
+                        }
+                      </div>
+                    )}
                     <div className="flex items-center gap-1.5">
                       <Clock className="w-3.5 h-3.5 text-slate-400" />
                       <span>{cls.hari}, {cls.jam}</span>
@@ -884,16 +899,62 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
               </div>
 
               <div>
-                <label className="block text-slate-700 font-semibold mb-1">Dosen Pengampu Perkuliahan</label>
+                <label className="block text-slate-700 font-semibold mb-1">Dosen Pengampu Utama</label>
                 <select
                   value={formData.dosenId}
-                  onChange={e => setFormData({...formData, dosenId: e.target.value})}
+                  onChange={e => {
+                    const newDosenId = e.target.value;
+                    setFormData(prev => ({
+                      ...prev, 
+                      dosenId: newDosenId,
+                      teamTeaching: (prev.teamTeaching || []).filter(id => id !== newDosenId)
+                    }));
+                  }}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 bg-white"
                 >
                   {dosenList.map(d => (
                     <option key={d.uid} value={d.uid}>{d.name} ({d.nidn ? `NUPTK/NIP: ${d.nidn}` : 'Dosen'})</option>
                   ))}
                 </select>
+              </div>
+
+              {/* Pemilihan Dosen Team Teaching (Opsional) */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-slate-800 font-bold text-xs">
+                    Tim Pengajar / Team Teaching (Opsional)
+                  </label>
+                  <span className="text-[10px] text-slate-500 font-medium">Centang dosen pendamping</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-32 overflow-y-auto pr-1">
+                  {dosenList.filter(d => d.uid !== formData.dosenId).map(d => {
+                    const isChecked = (formData.teamTeaching || []).includes(d.uid);
+                    return (
+                      <label 
+                        key={d.uid} 
+                        className={`flex items-center gap-2 p-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${
+                          isChecked ? 'bg-purple-50 border-purple-300 text-purple-900 font-semibold' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={e => {
+                            const checked = e.target.checked;
+                            setFormData(prev => ({
+                              ...prev,
+                              teamTeaching: checked
+                                ? [...(prev.teamTeaching || []), d.uid]
+                                : (prev.teamTeaching || []).filter(id => id !== d.uid)
+                            }));
+                          }}
+                          className="w-3.5 h-3.5 text-purple-600 rounded border-slate-300 focus:ring-purple-500"
+                        />
+                        <span className="truncate">{d.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="grid grid-cols-3 gap-3">
@@ -1037,10 +1098,17 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
               </div>
 
               <div>
-                <label className="block text-slate-700 font-semibold mb-1">Dosen Pengampu</label>
+                <label className="block text-slate-700 font-semibold mb-1">Dosen Pengampu Utama</label>
                 <select
                   value={editFormData.dosenId}
-                  onChange={e => setEditFormData({...editFormData, dosenId: e.target.value})}
+                  onChange={e => {
+                    const newDosenId = e.target.value;
+                    setEditFormData(prev => ({
+                      ...prev, 
+                      dosenId: newDosenId,
+                      teamTeaching: (prev.teamTeaching || []).filter(id => id !== newDosenId)
+                    }));
+                  }}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 bg-white"
                 >
                   {dosenList.map(d => (
@@ -1049,6 +1117,45 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/* Pemilihan Dosen Team Teaching Edit (Opsional) */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-slate-800 font-bold text-xs">
+                    Tim Pengajar / Team Teaching (Opsional)
+                  </label>
+                  <span className="text-[10px] text-slate-500 font-medium">Centang dosen pendamping</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-32 overflow-y-auto pr-1">
+                  {dosenList.filter(d => d.uid !== editFormData.dosenId).map(d => {
+                    const isChecked = (editFormData.teamTeaching || []).includes(d.uid);
+                    return (
+                      <label 
+                        key={d.uid} 
+                        className={`flex items-center gap-2 p-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${
+                          isChecked ? 'bg-purple-50 border-purple-300 text-purple-900 font-semibold' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={e => {
+                            const checked = e.target.checked;
+                            setEditFormData(prev => ({
+                              ...prev,
+                              teamTeaching: checked
+                                ? [...(prev.teamTeaching || []), d.uid]
+                                : (prev.teamTeaching || []).filter(id => id !== d.uid)
+                            }));
+                          }}
+                          className="w-3.5 h-3.5 text-purple-600 rounded border-slate-300 focus:ring-purple-500"
+                        />
+                        <span className="truncate">{d.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="grid grid-cols-3 gap-3">

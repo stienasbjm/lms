@@ -190,27 +190,6 @@ export async function getLocal(key, initial) {
             });
           }
 
-          // Terapkan meeting overrides tersimpan di localStorage agar isTaskOpen & isOpen selalu persist
-          if (key === STORAGE_KEYS.CLASSES) {
-            finalItems = finalItems.map(cls => {
-              if (Array.isArray(cls.meetings)) {
-                const updatedMeetings = cls.meetings.map(m => {
-                  try {
-                    const oKey1 = `STIE_LMS_MEETING_${cls.id}_${m.pertemuanKe}`;
-                    const oKey2 = cls.uid ? `STIE_LMS_MEETING_${cls.uid}_${m.pertemuanKe}` : null;
-                    const rawO = localStorage.getItem(oKey1) || (oKey2 ? localStorage.getItem(oKey2) : null);
-                    if (rawO) {
-                      return { ...m, ...JSON.parse(rawO) };
-                    }
-                  } catch (e) {}
-                  return m;
-                });
-                return { ...cls, meetings: updatedMeetings };
-              }
-              return cls;
-            });
-          }
-
           localStorage.setItem(key, JSON.stringify(finalItems));
           fbLoaded = true;
           return finalItems;
@@ -259,25 +238,6 @@ export async function getLocal(key, initial) {
   if (Array.isArray(localItems) && localItems.length > 0) {
     if (localDeletedIds.length > 0) {
       localItems = localItems.filter(item => !localDeletedIds.includes(String(item.id || item.uid || '')));
-    }
-    if (key === STORAGE_KEYS.CLASSES) {
-      localItems = localItems.map(cls => {
-        if (Array.isArray(cls.meetings)) {
-          const updatedMeetings = cls.meetings.map(m => {
-            try {
-              const oKey1 = `STIE_LMS_MEETING_${cls.id}_${m.pertemuanKe}`;
-              const oKey2 = cls.uid ? `STIE_LMS_MEETING_${cls.uid}_${m.pertemuanKe}` : null;
-              const rawO = localStorage.getItem(oKey1) || (oKey2 ? localStorage.getItem(oKey2) : null);
-              if (rawO) {
-                return { ...m, ...JSON.parse(rawO) };
-              }
-            } catch (e) {}
-            return m;
-          });
-          return { ...cls, meetings: updatedMeetings };
-        }
-        return cls;
-      });
     }
     return localItems;
   }
@@ -372,12 +332,27 @@ export async function initializeLocalStore() {
   );
   const combinedClasses = missingInitial.length > 0 ? [...existingClasses, ...missingInitial] : existingClasses;
 
+  // Bersihkan key override legacy dari localStorage agar tidak mengaburkan state terkini
+  try {
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('STIE_LMS_MEETING_')) {
+        keysToRemove.push(k);
+      }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+  } catch (e) {}
+
   const cleanedClasses = combinedClasses
     .filter(cls => !deletedClassIds.includes(String(cls.id)))
     .map(cls => ({
       ...cls,
       meetings: (cls.meetings || []).map(m => ({
         ...m,
+        isTaskOpen: m.isTaskOpen !== undefined ? Boolean(m.isTaskOpen) : true,
+        isOpen: m.isOpen !== undefined ? Boolean(m.isOpen) : true,
+        hasTask: m.hasTask !== undefined ? Boolean(m.hasTask) : (m.pertemuanKe % 2 !== 0 && !m.isExam),
         materials: (m.materials || []).filter(mat => 
           !mat.judul?.includes('Slide Materi Pertemuan 2') &&
           !(mat.fileUrl || '').includes('raw.githubusercontent.com')
@@ -1019,9 +994,13 @@ export async function batchImportData(type, items, user) {
    ========================================================================= */
 
 /**
- * Helper untuk memvalidasi apakah suatu kelas perkuliahan ditugaskan kepada Dosen tertentu oleh BAA
+ * Helper untuk memvalidasi apakah suatu kelas perkuliahan ditugaskan kepada Dosen tertentu oleh BAA.
+ * Aturan Ketat:
+ * 1. Hanya Dosen Pengampu Utama kelas yang bersangkutan.
+ * 2. ATAU Dosen yang masuk dalam Tim Pengajar / Team Teaching kelas tersebut.
+ * KELAS DOSEN LAIN TIDAK BOLEH MUNCUL meskipun memiliki mata kuliah yang sama.
  */
-export function isClassAssignedToLecturer(cls, lecturer, mks = []) {
+export function isClassAssignedToLecturer(cls, lecturer) {
   if (!cls || !lecturer) return false;
   const lecturerUid = lecturer.uid ? String(lecturer.uid).trim() : '';
   const lecturerId = lecturer.id ? String(lecturer.id).trim() : '';
@@ -1029,33 +1008,53 @@ export function isClassAssignedToLecturer(cls, lecturer, mks = []) {
   const lecturerEmail = lecturer.email ? String(lecturer.email).trim().toLowerCase() : '';
   const lecturerName = lecturer.name ? String(lecturer.name).trim().toLowerCase() : '';
 
-  const classDosenId = cls.dosenId ? String(cls.dosenId).trim() : '';
-  const classDosenNidn = cls.dosenNidn ? String(cls.dosenNidn).trim() : '';
-  const classDosenEmail = cls.dosenEmail ? String(cls.dosenEmail).trim().toLowerCase() : '';
-  const classDosenName = cls.namaDosen ? String(cls.namaDosen).trim().toLowerCase() : '';
+  const matchesLecturer = (targetId, targetNidn, targetEmail, targetName) => {
+    const tid = targetId ? String(targetId).trim() : '';
+    const tnidn = targetNidn ? String(targetNidn).trim() : '';
+    const temail = targetEmail ? String(targetEmail).trim().toLowerCase() : '';
+    const tname = targetName ? String(targetName).trim().toLowerCase() : '';
 
-  // 1. Cocokkan langsung berdasarkan data pengajar di kelas
-  if (classDosenId && (classDosenId === lecturerUid || classDosenId === lecturerId)) return true;
-  if (lecturerNidn && (classDosenId === lecturerNidn || classDosenNidn === lecturerNidn)) return true;
-  if (lecturerEmail && (classDosenId === lecturerEmail || classDosenEmail === lecturerEmail)) return true;
-  if (classDosenName && lecturerName && classDosenName === lecturerName) return true;
+    if (tid && (tid === lecturerUid || tid === lecturerId)) return true;
+    if (lecturerNidn && (tnidn === lecturerNidn || tid === lecturerNidn)) return true;
+    if (lecturerEmail && (temail === lecturerEmail || tid === lecturerEmail)) return true;
+    if (tname && lecturerName && tname === lecturerName) return true;
+    return false;
+  };
 
-  // 2. Cocokkan berdasarkan penugasan Mata Kuliah oleh BAA di Master Data Kurikulum
-  if (Array.isArray(mks) && mks.length > 0) {
-    const matchedMk = mks.find(m => 
-      (cls.mataKuliahId && m.id === cls.mataKuliahId) || 
-      (cls.kodeMk && m.kodeMk === cls.kodeMk)
-    );
-    if (matchedMk) {
-      const mkDosenId = matchedMk.dosenId ? String(matchedMk.dosenId).trim() : '';
-      const mkDosenNidn = matchedMk.dosenNidn ? String(matchedMk.dosenNidn).trim() : '';
-      const mkDosenEmail = matchedMk.dosenEmail ? String(matchedMk.dosenEmail).trim().toLowerCase() : '';
-      const mkDosenName = matchedMk.namaDosen ? String(matchedMk.namaDosen).trim().toLowerCase() : '';
+  // 1. Cocokkan langsung dengan Dosen Pengampu Utama di kelas
+  if (matchesLecturer(cls.dosenId, cls.dosenNidn, cls.dosenEmail, cls.namaDosen)) {
+    return true;
+  }
 
-      if (mkDosenId && (mkDosenId === lecturerUid || mkDosenId === lecturerId)) return true;
-      if (lecturerNidn && (mkDosenId === lecturerNidn || mkDosenNidn === lecturerNidn)) return true;
-      if (lecturerEmail && (mkDosenId === lecturerEmail || mkDosenEmail === lecturerEmail)) return true;
-      if (mkDosenName && lecturerName && mkDosenName === lecturerName) return true;
+  // 2. Cocokkan jika Dosen masuk dalam Tim Pengajar / Team Teaching kelas
+  const teamLists = [
+    cls.teamTeaching,
+    cls.dosenTeam,
+    cls.dosenPengajar,
+    cls.teamDosen,
+    cls.dosenIds
+  ];
+
+  for (const list of teamLists) {
+    if (Array.isArray(list)) {
+      for (const item of list) {
+        if (!item) continue;
+        if (typeof item === 'string' || typeof item === 'number') {
+          const s = String(item).trim();
+          if (
+            s === lecturerUid || 
+            s === lecturerId || 
+            (lecturerNidn && s === lecturerNidn) || 
+            (lecturerEmail && s.toLowerCase() === lecturerEmail)
+          ) {
+            return true;
+          }
+        } else if (typeof item === 'object') {
+          if (matchesLecturer(item.uid || item.id, item.nidn, item.email, item.name || item.namaDosen)) {
+            return true;
+          }
+        }
+      }
     }
   }
 
@@ -1069,20 +1068,6 @@ export async function getClasses() {
 export async function getClassById(classId) {
   const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
   const classItem = list.find(c => String(c.id) === String(classId) || String(c.uid || '') === String(classId)) || null;
-  if (classItem && Array.isArray(classItem.meetings)) {
-    classItem.meetings = classItem.meetings.map(m => {
-      try {
-        const oKey1 = `STIE_LMS_MEETING_${classItem.id}_${m.pertemuanKe}`;
-        const oKey2 = classItem.uid ? `STIE_LMS_MEETING_${classItem.uid}_${m.pertemuanKe}` : null;
-        const oKey3 = `STIE_LMS_MEETING_${classId}_${m.pertemuanKe}`;
-        const rawO = localStorage.getItem(oKey1) || (oKey2 ? localStorage.getItem(oKey2) : null) || localStorage.getItem(oKey3);
-        if (rawO) {
-          return { ...m, ...JSON.parse(rawO) };
-        }
-      } catch (e) {}
-      return m;
-    });
-  }
   return classItem;
 }
 
@@ -1285,36 +1270,44 @@ export async function unenrollStudent(classId, mhsId, user) {
 
 export async function updateMeeting(classId, meetingNumber, updateFields, user) {
   const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
-  // Gunakan String coercion agar tidak gagal saat tipe id berbeda (string vs number)
   const classItem = list.find(c => String(c.id) === String(classId) || String(c.uid || '') === String(classId));
   if (!classItem) throw new Error("Kelas tidak ditemukan");
 
   const meetingIndex = classItem.meetings.findIndex(m => m.pertemuanKe === Number(meetingNumber));
   if (meetingIndex === -1) throw new Error("Pertemuan tidak ditemukan");
 
+  // Perbarui field meeting secara terstruktur
   classItem.meetings[meetingIndex] = {
     ...classItem.meetings[meetingIndex],
     ...updateFields
   };
 
-  // Simpan override spesifik meeting ke localStorage agar aman 100% dari overwrite saat refresh
+  // Normalisasi boolean flag agar konsisten dan tidak ambigu
+  if (updateFields.isTaskOpen !== undefined) {
+    classItem.meetings[meetingIndex].isTaskOpen = Boolean(updateFields.isTaskOpen);
+  }
+  if (updateFields.isOpen !== undefined) {
+    classItem.meetings[meetingIndex].isOpen = Boolean(updateFields.isOpen);
+  }
+  if (updateFields.hasTask !== undefined) {
+    classItem.meetings[meetingIndex].hasTask = Boolean(updateFields.hasTask);
+  }
+
+  // Bersihkan key override legacy dari localStorage agar tidak mengaburkan state
   try {
     const oKey1 = `STIE_LMS_MEETING_${classItem.id}_${meetingNumber}`;
     const oKey2 = `STIE_LMS_MEETING_${classId}_${meetingNumber}`;
-    const prevO = JSON.parse(localStorage.getItem(oKey1) || localStorage.getItem(oKey2) || '{}');
-    const mergedO = JSON.stringify({ ...prevO, ...updateFields });
-    localStorage.setItem(oKey1, mergedO);
-    localStorage.setItem(oKey2, mergedO);
+    localStorage.removeItem(oKey1);
+    localStorage.removeItem(oKey2);
     if (classItem.uid) {
-      localStorage.setItem(`STIE_LMS_MEETING_${classItem.uid}_${meetingNumber}`, mergedO);
+      localStorage.removeItem(`STIE_LMS_MEETING_${classItem.uid}_${meetingNumber}`);
     }
   } catch (e) {}
 
-  // Simpan ke localStorage terlebih dahulu
+  // Simpan data kelas secara terintegrasi ke localStorage
   await setLocal(STORAGE_KEYS.CLASSES, list);
 
-  // Langsung update field meetings ke Firestore agar persist setelah refresh
-  // (tidak mengandalkan batch write yang bisa tertimpa saat getLocal berikutnya)
+  // Sinkronisasi field meetings ke Firestore jika terhubung
   if (isRealFirebaseConfigured() && db) {
     try {
       const docId = String(classItem.uid || classItem.id || classId);
