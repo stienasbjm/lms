@@ -1008,7 +1008,7 @@ export async function deleteUser(targetUserOrUid, currentUser) {
     ...target
   };
 
-  const activeUser = currentUser || getCurrentUser();
+  const activeUser = currentUser || (typeof localStorage !== 'undefined' ? JSON.parse(localStorage.getItem('STIE_LMS_ACTIVE_USER') || 'null') : null);
   const currentUid = activeUser?.uid || activeUser?.id;
   const currentEmail = (activeUser?.email || '').toLowerCase().trim();
   const targetUid = effectiveTarget.uid || effectiveTarget.id;

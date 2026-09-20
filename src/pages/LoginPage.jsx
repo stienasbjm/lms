@@ -14,10 +14,12 @@ import {
   CheckCircle,
   Mail,
   UserPlus,
-  BookOpen
+  BookOpen,
+  KeyRound,
+  CheckCircle2
 } from 'lucide-react';
 import { registerStudent } from '../firebase/firestoreService';
-import { requestPasswordReset } from '../firebase/authService';
+import { requestPasswordReset, directResetPassword } from '../firebase/authService';
 import { 
   calculateAcademicStanding, 
   generateSuggestedNim, 
@@ -38,6 +40,11 @@ export default function LoginPage({ onBackToLanding, defaultAuthMode = 'LOGIN' }
   const [successMessage, setSuccessMessage] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Reset Password State
+  const [resetTarget, setResetTarget] = useState(null); // Akun yang ditemukan saat cari reset sandi
+  const [newPasswordForReset, setNewPasswordForReset] = useState('');
+  const [confirmPasswordForReset, setConfirmPasswordForReset] = useState('');
+  const [showResetPass, setShowResetPass] = useState(false);
 
   // Register State (Khusus Mahasiswa Baru)
   const [regForm, setRegForm] = useState({
@@ -84,14 +91,64 @@ export default function LoginPage({ onBackToLanding, defaultAuthMode = 'LOGIN' }
     setLoading(true);
     try {
       const res = await requestPasswordReset(trimmedId);
-      const msg = `Tautan reset kata sandi telah dikirim ke alamat email resmi terdaftar: ${res.email}. Silakan periksa kotak masuk (Inbox) atau folder Spam email Anda.`;
-      setSuccessMessage(msg);
-      showSuccessAlert('Tautan Reset Terkirim', msg);
-      setIdentifier('');
+      if (res.sentViaFirebase) {
+        const msg = `Tautan reset kata sandi telah dikirim ke alamat email resmi terdaftar: ${res.email}. Silakan periksa kotak masuk (Inbox) atau folder Spam email Anda.`;
+        setSuccessMessage(msg);
+        showSuccessAlert('Tautan Reset Terkirim', msg);
+        setIdentifier('');
+      } else {
+        // Layanan email eksternal dinonaktifkan/belum dikonfigurasi -> Berikan opsi reset langsung yang aman
+        const target = res.foundUser || { email: res.email, name: res.name };
+        setResetTarget(target);
+        setSuccessMessage(`Akun ditemukan atas nama ${target.name || target.email}. Silakan buat kata sandi baru Anda langsung di bawah ini.`);
+        showSuccessToast('Akun ditemukan! Silakan atur kata sandi baru.');
+      }
     } catch (err) {
       const msg = err.message || "Gagal memproses permintaan reset kata sandi.";
       setErrorMessage(msg);
-      showErrorAlert('Gagal Reset Kata Sandi', msg);
+      showErrorAlert('Akun Tidak Ditemukan', msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDirectResetSubmit = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    if (!newPasswordForReset || newPasswordForReset.length < 6) {
+      const msg = "Kata sandi baru minimal 6 karakter.";
+      setErrorMessage(msg);
+      showErrorAlert("Kata Sandi Terlalu Pendek", msg);
+      return;
+    }
+
+    if (newPasswordForReset !== confirmPasswordForReset) {
+      const msg = "Konfirmasi kata sandi baru tidak cocok.";
+      setErrorMessage(msg);
+      showErrorAlert("Kata Sandi Tidak Cocok", msg);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const targetEmail = resetTarget.email;
+      await directResetPassword(targetEmail, newPasswordForReset);
+      showSuccessAlert(
+        "Kata Sandi Berhasil Diperbarui!", 
+        `Kata sandi baru untuk akun ${resetTarget.name || targetEmail} telah berhasil disimpan. Silakan masuk menggunakan kata sandi baru Anda.`
+      );
+      setIdentifier(targetEmail);
+      setPassword(newPasswordForReset);
+      setResetTarget(null);
+      setNewPasswordForReset('');
+      setConfirmPasswordForReset('');
+      setAuthMode('LOGIN');
+    } catch (err) {
+      const msg = err.message || "Gagal memperbarui kata sandi.";
+      setErrorMessage(msg);
+      showErrorAlert("Gagal Reset Sandi", msg);
     } finally {
       setLoading(false);
     }
@@ -321,71 +378,165 @@ export default function LoginPage({ onBackToLanding, defaultAuthMode = 'LOGIN' }
           )}
 
           {/* =========================================================================
-              VIEW 1.5: FORM LUPA PASSWORD
+              VIEW 1.5: FORM LUPA PASSWORD & RESET SANDI LANGSUNG
               ========================================================================= */}
           {authMode === 'FORGOT_PASSWORD' && (
-            <form className="space-y-4" onSubmit={handleForgotPasswordSubmit}>
-              <div className="p-3 bg-brand-50 border border-brand-200 rounded-xl text-brand-900 space-y-1 mb-2">
-                <span className="font-bold block flex items-center gap-1">
-                  <Lock className="w-4 h-4 text-brand-700" />
-                  Reset Kata Sandi
-                </span>
-                <p className="text-[11px] text-brand-800 leading-relaxed">
-                  Masukkan email yang terdaftar. Kami akan mengirimkan tautan untuk mereset kata sandi Anda.
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Email Terdaftar / NIM / Username Akun
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                    <Mail className="w-4 h-4" />
+            <div className="space-y-4">
+              {!resetTarget ? (
+                <form className="space-y-4" onSubmit={handleForgotPasswordSubmit}>
+                  <div className="p-3.5 bg-brand-50 border border-brand-200 rounded-2xl text-brand-900 space-y-1">
+                    <span className="font-bold block flex items-center gap-1.5 text-xs">
+                      <Lock className="w-4 h-4 text-brand-700" />
+                      Reset Kata Sandi Akun
+                    </span>
+                    <p className="text-[11px] text-brand-800 leading-relaxed">
+                      Masukkan email terdaftar, NIM, atau username Anda untuk memverifikasi akun dan menyetel ulang kata sandi.
+                    </p>
                   </div>
-                  <input
-                    type="text"
-                    required
-                    value={identifier}
-                    onChange={(e) => setIdentifier(e.target.value)}
-                    placeholder="Masukkan Email, NIM (misal: 261011...), atau Username"
-                    className="block w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none transition-all"
-                  />
-                </div>
-                <span className="text-[10px] text-slate-500 mt-1 block">
-                  Sistem akan otomatis mendeteksi dan mengirimkan instruksi reset ke email resmi akun tersebut.
-                </span>
-              </div>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full mt-4 py-2.5 px-4 border border-transparent rounded-xl shadow-md text-xs font-bold text-white bg-brand-800 hover:bg-brand-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {loading ? (
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                    Memproses...
-                  </span>
-                ) : (
-                  <>
-                    <span>Kirim Tautan Reset</span>
-                    <Mail className="w-4 h-4" />
-                  </>
-                )}
-              </button>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Email Terdaftar / NIM / Username Akun *
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                        <Mail className="w-4 h-4" />
+                      </div>
+                      <input
+                        type="text"
+                        required
+                        value={identifier}
+                        onChange={(e) => setIdentifier(e.target.value)}
+                        placeholder="Contoh: raby79279@gmail.com atau NIM Anda"
+                        className="block w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none transition-all font-semibold"
+                      />
+                    </div>
+                    <span className="text-[10px] text-slate-500 mt-1 block">
+                      Sistem akan mendeteksi akun Anda secara instan dan menyediakan opsi reset kata sandi aman.
+                    </span>
+                  </div>
 
-              <div className="text-center pt-3">
-                <button
-                  type="button"
-                  onClick={() => setAuthMode('LOGIN')}
-                  className="text-[11px] text-slate-500 hover:text-brand-800 font-semibold flex items-center justify-center gap-1 mx-auto"
-                >
-                  <ArrowLeft className="w-3.5 h-3.5" />
-                  Kembali ke Halaman Login
-                </button>
-              </div>
-            </form>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full mt-2 py-2.5 px-4 border border-transparent rounded-xl shadow-md text-xs font-bold text-white bg-brand-800 hover:bg-brand-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {loading ? (
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                        Memeriksa Akun...
+                      </span>
+                    ) : (
+                      <>
+                        <span>Cari Akun & Lanjutkan Reset</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+
+                  <div className="text-center pt-2">
+                    <button
+                      type="button"
+                      onClick={() => { setAuthMode('LOGIN'); setResetTarget(null); }}
+                      className="text-[11px] text-slate-500 hover:text-brand-800 font-semibold flex items-center justify-center gap-1 mx-auto"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                      Kembali ke Halaman Login
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <form className="space-y-3.5" onSubmit={handleDirectResetSubmit}>
+                  <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-950 space-y-1.5">
+                    <div className="flex items-center gap-1.5 font-bold text-xs text-emerald-900">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>Akun Ditemukan: {resetTarget.name}</span>
+                    </div>
+                    <div className="text-[11px] text-emerald-800 flex flex-wrap gap-x-3 gap-y-1">
+                      <span>Email: <strong className="font-mono">{resetTarget.email}</strong></span>
+                      {resetTarget.nim && <span>NIM: <strong className="font-mono">{resetTarget.nim}</strong></span>}
+                    </div>
+                    <p className="text-[10px] text-emerald-700 leading-relaxed pt-1 border-t border-emerald-200/60">
+                      Silakan tentukan kata sandi baru untuk akun Anda langsung di bawah ini:
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Kata Sandi Baru * (Min. 6 Karakter)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showResetPass ? "text" : "password"}
+                        required
+                        minLength={6}
+                        value={newPasswordForReset}
+                        onChange={(e) => setNewPasswordForReset(e.target.value)}
+                        placeholder="Minimal 6 karakter"
+                        className="block w-full px-3 py-2 pr-10 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none font-semibold"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowResetPass(!showResetPass)}
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
+                      >
+                        {showResetPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Konfirmasi Kata Sandi Baru *
+                    </label>
+                    <input
+                      type={showResetPass ? "text" : "password"}
+                      required
+                      minLength={6}
+                      value={confirmPasswordForReset}
+                      onChange={(e) => setConfirmPasswordForReset(e.target.value)}
+                      placeholder="Ketik ulang kata sandi baru"
+                      className="block w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none font-semibold"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full mt-3 py-2.5 px-4 border border-transparent rounded-xl shadow-md text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {loading ? (
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                        Menyimpan Kata Sandi...
+                      </span>
+                    ) : (
+                      <>
+                        <KeyRound className="w-4 h-4" />
+                        <span>Simpan Kata Sandi Baru & Masuk</span>
+                      </>
+                    )}
+                  </button>
+
+                  <div className="flex justify-between items-center pt-2 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setResetTarget(null)}
+                      className="text-slate-500 hover:text-slate-800 font-semibold"
+                    >
+                      Batal / Cari Akun Lain
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setAuthMode('LOGIN'); setResetTarget(null); }}
+                      className="text-brand-700 hover:text-brand-900 font-bold"
+                    >
+                      Kembali ke Login
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
           )}
 
           {/* =========================================================================

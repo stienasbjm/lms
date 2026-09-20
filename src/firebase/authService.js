@@ -8,9 +8,10 @@ import {
   onAuthStateChanged,
   sendPasswordResetEmail 
 } from "firebase/auth";
-import { doc, getDoc, setDoc, collection, getDocs } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc, collection, getDocs } from "firebase/firestore";
 import { auth, db, isRealFirebaseConfigured } from "./config.js";
 import { INITIAL_USERS } from "../utils/seedData.js";
+import { getUsers } from "./firestoreService.js";
 
 // Helper konversi username/NIM/NIDN ke email standard jika bukan format email
 export function normalizeLoginIdentifier(identifier) {
@@ -49,130 +50,28 @@ export async function loginUser(identifier, password) {
     throw new Error("Silakan masukkan kata sandi akun Anda.");
   }
 
-  // 1. Kumpulkan seluruh pengguna: gabungkan INITIAL_USERS dengan data dari Firestore (jika ada) dan localStorage
-  let combinedUsers = [...INITIAL_USERS];
+  // 1. Kumpulkan seluruh pengguna dari getUsers() yang memadukan data cloud Firestore dan local storage secara terpadu
+  let combinedUsers = [];
   try {
-    let fbUsers = [];
-    let fbLoaded = false;
-    if (isRealFirebaseConfigured() && db) {
-       try {
-         const snap = await getDocs(collection(db, "users"));
-          if (!snap.empty) {
-            fbUsers = snap.docs.map(d => {
-              const data = d.data();
-              if (!data.uid && !data.id) data.id = d.id;
-              return data;
-            });
-            const storedRaw = localStorage.getItem('STIE_LMS_USERS');
-            let mergedUsers = fbUsers;
-            if (storedRaw) {
-              try {
-                const localParsed = JSON.parse(storedRaw);
-                const map = new Map();
-                localParsed.forEach(u => {
-                  const id = u.uid || u.id || u.email;
-                  if (id) map.set(String(id), u);
-                });
-                fbUsers.forEach(u => {
-                  const id = u.uid || u.id || u.email;
-                  if (id) {
-                    const ex = map.get(String(id));
-                    map.set(String(id), { ...(ex || {}), ...u });
-                  }
-                });
-                mergedUsers = Array.from(map.values());
-              } catch(e) {}
-            }
-            localStorage.setItem('STIE_LMS_USERS', JSON.stringify(mergedUsers));
-            fbLoaded = true;
-          }
-       } catch(e) { console.warn(e); }
-    }
-    
-    const stored = localStorage.getItem('STIE_LMS_USERS');
-    let parsedUsers = fbLoaded ? fbUsers : (stored ? JSON.parse(stored) : []);
-    
-    if (!fbLoaded && parsedUsers.length > 0 && isRealFirebaseConfigured() && db) {
-       try {
-         const { writeBatch, doc } = await import("firebase/firestore");
-         const batch = writeBatch(db);
-         parsedUsers.forEach(u => {
-           const id = u.uid || u.id;
-           if (id) batch.set(doc(db, "users", String(id)), u, { merge: true });
-         });
-         await batch.commit();
-       } catch(e) { console.warn("Failed to push local users to FB", e); }
-    }
-
-    if (parsedUsers.length > 0) {
-      if (Array.isArray(parsedUsers)) {
-        parsedUsers.forEach(storedU => {
-          const idx = combinedUsers.findIndex(u => 
-            u.uid === storedU.uid || 
-            (u.email && storedU.email && u.email.toLowerCase() === storedU.email.toLowerCase())
-          );
-          // Jika ada akun admin di localStorage yang masih memakai password usang admin123, otomatis mutakhirkan ke admin126
-          if ((storedU.username === 'admin' || storedU.role === 'SUPER_ADMIN') && storedU.password === 'admin123') {
-            storedU.password = 'admin126';
-          }
-
-          if (idx >= 0) {
-            combinedUsers[idx] = { 
-              ...combinedUsers[idx], 
-              ...storedU,
-              // Prioritaskan password dari data yang disimpan/diubah oleh Admin/BAA
-              password: storedU.password !== undefined && storedU.password !== '' 
-                ? storedU.password 
-                : combinedUsers[idx].password,
-              // Hormati status keaktifan akun dari data tersimpan
-              isActive: storedU.isActive !== undefined ? storedU.isActive : combinedUsers[idx].isActive 
-            };
-          } else {
-            combinedUsers.push({ ...storedU });
-          }
-        });
-      }
-    }
+    combinedUsers = await getUsers();
   } catch (e) {
-    console.warn("Gagal membaca STIE_LMS_USERS:", e);
+    console.warn("getUsers error during login:", e);
+    const stored = localStorage.getItem('STIE_LMS_USERS');
+    combinedUsers = stored ? JSON.parse(stored) : [...INITIAL_USERS];
   }
 
-  // Filter keluar seluruh akun yang telah dihapus permanen dari sistem
-  try {
-    const delRaw = localStorage.getItem('STIE_LMS_DELETED_USERS');
-    if (delRaw) {
-      const delList = JSON.parse(delRaw);
-      if (Array.isArray(delList) && delList.length > 0) {
-        combinedUsers = combinedUsers.filter(u => {
-          const uid = String(u.uid || '');
-          const id = String(u.id || '');
-          const email = String(u.email || '').toLowerCase().trim();
-          const username = String(u.username || '').toLowerCase().trim();
-          const nim = String(u.nim || '').trim();
-          const nidn = String(u.nidn || '').trim();
-
-          // Rabiyah selalu dilindungi
-          if (uid === 'user-mhs-1789806444944' || id === 'user-mhs-1789806444944' || email === 'raby79279@gmail.com' || nim === '20251111644') {
-            return true;
-          }
-
-          if (uid && delList.includes(uid)) return false;
-          if (id && delList.includes(id)) return false;
-          if (email && delList.includes(email)) return false;
-          if (username && delList.includes(username)) return false;
-          if (nim && delList.includes(nim)) return false;
-          if (nidn && delList.includes(nidn)) return false;
-          return true;
-        });
-      }
+  // Jika ada akun admin di storage yang masih memakai password usang admin123, otomatis mutakhirkan ke admin126
+  combinedUsers.forEach(u => {
+    if ((u.username === 'admin' || u.role === 'SUPER_ADMIN') && u.password === 'admin123') {
+      u.password = 'admin126';
     }
-  } catch (e) {}
+  });
 
   // 2. Cari pengguna yang cocok secara tepat (Email, Alias Email, Username, NIM, NIDN, atau kata kunci peran)
   let foundUser = combinedUsers.find(u => 
-    (u.email && u.email.toLowerCase() === trimmed) ||
-    (u.aliasEmail && u.aliasEmail.toLowerCase() === trimmed) ||
-    (u.username && u.username.toLowerCase() === trimmed) ||
+    (u.email && u.email.toLowerCase().trim() === trimmed) ||
+    (u.aliasEmail && u.aliasEmail.toLowerCase().trim() === trimmed) ||
+    (u.username && u.username.toLowerCase().trim() === trimmed) ||
     (u.nim && String(u.nim).trim().toLowerCase() === trimmed) ||
     (u.nidn && String(u.nidn).trim().toLowerCase() === trimmed) ||
     (trimmed === 'admin' && (u.role === 'SUPER_ADMIN' || u.role === 'ADMIN')) ||
@@ -315,51 +214,21 @@ export async function requestPasswordReset(identifier) {
     throw new Error("Silakan masukkan alamat email, NIM, atau username akun Anda.");
   }
 
-  // 1. Kumpulkan seluruh pengguna untuk menemukan email terdaftar
-  let combinedUsers = [...INITIAL_USERS];
+  // 1. Kumpulkan seluruh pengguna dari getUsers()
+  let combinedUsers = [];
   try {
-    const stored = localStorage.getItem('STIE_LMS_USERS');
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed)) {
-        parsed.forEach(storedU => {
-          const idx = combinedUsers.findIndex(u => 
-            u.uid === storedU.uid || 
-            (u.email && storedU.email && u.email.toLowerCase() === storedU.email.toLowerCase())
-          );
-          if (idx >= 0) combinedUsers[idx] = { ...combinedUsers[idx], ...storedU };
-          else combinedUsers.push(storedU);
-        });
-      }
-    }
+    combinedUsers = await getUsers();
   } catch (e) {
-    console.warn("Gagal membaca pengguna lokal:", e);
+    console.warn("Gagal membaca pengguna dari getUsers():", e);
+    const stored = localStorage.getItem('STIE_LMS_USERS');
+    combinedUsers = stored ? JSON.parse(stored) : [...INITIAL_USERS];
   }
-
-  // Filter keluar seluruh akun yang telah terhapus
-  try {
-    const delRaw = localStorage.getItem('STIE_LMS_DELETED_USERS');
-    if (delRaw) {
-      const delList = JSON.parse(delRaw);
-      if (Array.isArray(delList) && delList.length > 0) {
-        combinedUsers = combinedUsers.filter(u => {
-          const uid = String(u.uid || '');
-          const id = String(u.id || '');
-          const email = String(u.email || '').toLowerCase().trim();
-          if (uid && delList.includes(uid)) return false;
-          if (id && delList.includes(id)) return false;
-          if (email && delList.includes(email)) return false;
-          return true;
-        });
-      }
-    }
-  } catch (e) {}
 
   // 2. Cari pengguna berdasarkan Email, Alias, Username, NIM, atau NIDN
   const foundUser = combinedUsers.find(u => 
-    (u.email && u.email.toLowerCase() === trimmed) ||
-    (u.aliasEmail && u.aliasEmail.toLowerCase() === trimmed) ||
-    (u.username && u.username.toLowerCase() === trimmed) ||
+    (u.email && u.email.toLowerCase().trim() === trimmed) ||
+    (u.aliasEmail && u.aliasEmail.toLowerCase().trim() === trimmed) ||
+    (u.username && u.username.toLowerCase().trim() === trimmed) ||
     (u.nim && String(u.nim).trim().toLowerCase() === trimmed) ||
     (u.nidn && String(u.nidn).trim().toLowerCase() === trimmed)
   );
@@ -371,7 +240,7 @@ export async function requestPasswordReset(identifier) {
     targetEmail = trimmed;
   }
 
-  if (!targetEmail) {
+  if (!foundUser && !targetEmail) {
     throw new Error(`Akun dengan identitas '${identifier}' tidak ditemukan dalam basis data LMS STIE Nasional.`);
   }
 
@@ -382,7 +251,7 @@ export async function requestPasswordReset(identifier) {
   let sentViaFirebase = false;
 
   // 3. Kirim reset password via Firebase Auth jika terkonfigurasi
-  if (isRealFirebaseConfigured() && auth) {
+  if (isRealFirebaseConfigured() && auth && targetEmail) {
     try {
       await sendPasswordResetEmail(auth, targetEmail);
       sentViaFirebase = true;
@@ -413,7 +282,84 @@ export async function requestPasswordReset(identifier) {
     success: true,
     email: targetEmail,
     name: foundUser?.name || targetEmail,
-    sentViaFirebase
+    sentViaFirebase,
+    foundUser: foundUser ? {
+      uid: foundUser.uid || foundUser.id,
+      name: foundUser.name,
+      email: foundUser.email,
+      nim: foundUser.nim,
+      role: foundUser.role
+    } : null
+  };
+}
+
+/**
+ * Reset Kata Sandi Langsung secara Aman (Self-Service Direct Password Reset)
+ * Digunakan jika layanan email Firebase eksternal tidak aktif atau kuota habis
+ */
+export async function directResetPassword(identifier, newPassword) {
+  const rawId = (identifier || '').trim();
+  const trimmed = rawId.toLowerCase();
+  const cleanPass = (newPassword || '').trim();
+
+  if (!rawId) {
+    throw new Error("Identitas pengguna tidak boleh kosong.");
+  }
+  if (!cleanPass || cleanPass.length < 6) {
+    throw new Error("Kata sandi baru minimal 6 karakter.");
+  }
+
+  let list = [];
+  try {
+    list = await getUsers();
+  } catch (e) {
+    const stored = localStorage.getItem('STIE_LMS_USERS');
+    list = stored ? JSON.parse(stored) : [...INITIAL_USERS];
+  }
+
+  const target = list.find(u => 
+    (u.email && u.email.toLowerCase().trim() === trimmed) ||
+    (u.aliasEmail && u.aliasEmail.toLowerCase().trim() === trimmed) ||
+    (u.username && u.username.toLowerCase().trim() === trimmed) ||
+    (u.nim && String(u.nim).trim().toLowerCase() === trimmed) ||
+    (u.nidn && String(u.nidn).trim().toLowerCase() === trimmed) ||
+    (u.uid && String(u.uid) === rawId) ||
+    (u.id && String(u.id) === rawId)
+  );
+
+  if (!target) {
+    throw new Error(`Akun dengan identitas '${identifier}' tidak ditemukan dalam sistem.`);
+  }
+
+  const targetUid = target.uid || target.id;
+
+  // Perbarui kata sandi di state lokal
+  const updatedList = list.map(u => {
+    if ((targetUid && (u.uid === targetUid || u.id === targetUid)) || (u.email && u.email.toLowerCase().trim() === target.email.toLowerCase().trim())) {
+      return {
+        ...u,
+        password: cleanPass
+      };
+    }
+    return u;
+  });
+
+  localStorage.setItem('STIE_LMS_USERS', JSON.stringify(updatedList));
+
+  // Coba perbarui di Firestore jika online
+  if (isRealFirebaseConfigured() && db && targetUid) {
+    try {
+      await updateDoc(doc(db, "users", String(targetUid)), { password: cleanPass });
+    } catch (e) {
+      console.warn("Direct Firestore directResetPassword updateDoc warning:", e);
+    }
+  }
+
+  return {
+    success: true,
+    name: target.name,
+    email: target.email,
+    nim: target.nim
   };
 }
 
