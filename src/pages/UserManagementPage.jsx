@@ -197,6 +197,8 @@ export default function UserManagementPage() {
     const submissionData = { ...createForm };
     if (submissionData.role === 'DOSEN' && !submissionData.nidn?.trim()) {
       submissionData.nidn = '110508' + Math.floor(1000 + Math.random() * 9000);
+    } else if (submissionData.role === 'MAHASISWA') {
+      submissionData.semester = calculateAcademicStanding(submissionData.nim, submissionData.angkatan).semester;
     }
 
     try {
@@ -274,6 +276,7 @@ export default function UserManagementPage() {
       if (manageForm.role === 'MAHASISWA') {
         payload.nim = manageForm.nim.trim();
         payload.angkatan = Number(manageForm.angkatan);
+        payload.semester = calculateAcademicStanding(payload.nim, payload.angkatan).semester;
         payload.nidn = '';
       } else if (manageForm.role === 'DOSEN') {
         payload.nidn = manageForm.nidn.trim();

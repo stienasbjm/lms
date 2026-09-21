@@ -31,6 +31,7 @@ import {
   generateDefault16Meetings 
 } from "../utils/seedData";
 import { calculateFinalGrade } from "../utils/gradeCalculator";
+import { calculateAcademicStanding } from "../utils/studentNimHelper";
 
 // Key Penyimpanan LocalStorage untuk mode Demo / Cepat
 export const STORAGE_KEYS = {
@@ -490,6 +491,18 @@ export async function initializeLocalStore() {
       usersChanged = true;
     }
   });
+
+  // Sinkronisasi otomatis field semester untuk seluruh akun mahasiswa (misal: Angkatan 2025 -> Semester 3, Angkatan 2026 -> Semester 1)
+  currentUsers.forEach(u => {
+    if ((u.role || '').toUpperCase() === 'MAHASISWA') {
+      const standing = calculateAcademicStanding(u.nim, u.angkatan);
+      if (standing && standing.semester && Number(u.semester) !== standing.semester) {
+        u.semester = standing.semester;
+        usersChanged = true;
+      }
+    }
+  });
+
   if (usersChanged) {
     await setLocal(STORAGE_KEYS.USERS, currentUsers);
   }
@@ -571,6 +584,13 @@ export async function initializeLocalStore() {
       };
     });
   await setLocal(STORAGE_KEYS.CLASSES, cleanedClasses);
+
+  // Otomatis sinkronkan data kelas mahasiswa sesuai semester berjalan
+  try {
+    await syncClassesAndStudentsBySemester();
+  } catch (e) {
+    console.warn("Auto sync classes by semester on init error:", e);
+  }
 
   await getLocal(STORAGE_KEYS.LOGS, INITIAL_AUDIT_LOGS);
 }
@@ -917,6 +937,10 @@ export async function createUser(userData, currentUser) {
     nim: role === 'MAHASISWA' ? (userData.nim ? String(userData.nim).replace(/\D/g, '') : '') : '',
     nidn: role === 'DOSEN' ? (userData.nidn ? String(userData.nidn).trim() : '') : '',
     angkatan: role === 'MAHASISWA' ? (userData.angkatan ? Number(userData.angkatan) : 2026) : null,
+    semester: role === 'MAHASISWA' ? (
+      userData.semester ? Number(userData.semester) : 
+      calculateAcademicStanding(userData.nim, userData.angkatan).semester
+    ) : null,
     prodiId: userData.prodiId || 'prodi-s1-manajemen',
     phone: (userData.phone || '').trim(),
     isActive: userData.isActive !== undefined ? userData.isActive : true,
@@ -946,6 +970,16 @@ export async function createUser(userData, currentUser) {
   // Sisipkan di posisi pertama agar langsung muncul di paling atas tabel
   list.unshift(newUser);
   await setLocal(STORAGE_KEYS.USERS, list);
+
+  // Otomatis sinkronkan kelas perkuliahan sesuai semester jika peran MAHASISWA
+  if (role === 'MAHASISWA') {
+    try {
+      await syncStudentSemesterClasses(newUser);
+    } catch (e) {
+      console.warn("Auto sync semester classes on createUser warning:", e);
+    }
+  }
+
   await logAudit(
     currentUser, 
     'CREATE_USER', 
@@ -987,6 +1021,16 @@ export async function updateUser(uid, userData, currentUser) {
     cleanUserData.password = cleanUserData.password.trim();
   }
 
+  // Jika akun adalah Mahasiswa, sinkronkan semester berdasarkan angkatan/NIM
+  if ((target.role || '').toUpperCase() === 'MAHASISWA' || (cleanUserData.role || '').toUpperCase() === 'MAHASISWA') {
+    const effAngkatan = cleanUserData.angkatan !== undefined ? cleanUserData.angkatan : target.angkatan;
+    const effNim = cleanUserData.nim !== undefined ? cleanUserData.nim : target.nim;
+    if (cleanUserData.semester === undefined && (cleanUserData.angkatan !== undefined || cleanUserData.nim !== undefined)) {
+      const standing = calculateAcademicStanding(effNim, effAngkatan);
+      cleanUserData.semester = standing.semester;
+    }
+  }
+
   // Update langsung ke Firestore jika online
   if (isRealFirebaseConfigured() && db) {
     try {
@@ -1009,6 +1053,14 @@ export async function updateUser(uid, userData, currentUser) {
   });
 
   await setLocal(STORAGE_KEYS.USERS, updated);
+
+  const finalUser = updated.find(u => u.uid === uid || u.id === uid);
+  if (finalUser && (finalUser.role || '').toUpperCase() === 'MAHASISWA') {
+    try {
+      await syncStudentSemesterClasses(finalUser);
+    } catch (e) {}
+  }
+
   await logAudit(
     currentUser, 
     'UPDATE_USER', 
@@ -1265,7 +1317,7 @@ export async function registerStudent(studentData) {
     nim: effectiveNim,
     nidn: '',
     angkatan: angkatanVal,
-    semester: existingUser?.semester || 1,
+    semester: existingUser?.semester ? Number(existingUser.semester) : (calculateAcademicStanding(effectiveNim, angkatanVal).semester || 1),
     prodiId: prodiVal,
     phone: (studentData.phone || existingUser?.phone || '').trim(),
     isActive: true,
@@ -1300,6 +1352,13 @@ export async function registerStudent(studentData) {
 
   localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(list));
   notifyDataChange(STORAGE_KEYS.USERS, list);
+
+  // Otomatis sinkronisasi kelas perkuliahan paket semester untuk mahasiswa yang baru mendaftar
+  try {
+    await syncStudentSemesterClasses(studentObj);
+  } catch (e) {
+    console.warn("Auto sync semester classes on registerStudent warning:", e);
+  }
 
   // 6. Sinkronisasi dokumen pengguna ke Firestore (non-blocking)
   if (isRealFirebaseConfigured() && db && targetUid) {
@@ -1597,9 +1656,8 @@ export async function enrollStudent(classId, mhsId, user, options = {}) {
   const mk = mks.find(m => String(m.id) === String(classItem.mataKuliahId) || m.kodeMk === classItem.kodeMk);
 
   if (!options.bypassRestrictions && !isActorAdminOrBaa && student && mk) {
-    const studentSemester = student.semester ? Number(student.semester) : (
-      student.angkatan ? Math.max(1, ((2026 - Number(student.angkatan)) * 2) + 1) : 1
-    );
+    const standing = calculateAcademicStanding(student.nim, student.angkatan);
+    const studentSemester = standing?.semester || (student.semester ? Number(student.semester) : 1);
     const courseSemester = Number(mk.semesterDefault || 1);
 
     if (studentSemester < courseSemester) {
@@ -1646,6 +1704,182 @@ export async function unenrollStudent(classId, mhsId, user) {
 
   await logAudit(user, 'UNENROLL_STUDENT', `${roleName} (${user?.name || 'Pengontrol'}) mengeluarkan mahasiswa ${studentLabel} dari kelas ${classItem.namaMk} (${classItem.namaKelas || '-'})`);
   return classItem;
+}
+
+/**
+ * Sinkronisasi kelas perkuliahan paket semester untuk mahasiswa
+ * Memastikan mahasiswa semester 3 mendapatkan kelas semester 3, semester 1 mendapatkan semester 1, dst.
+ */
+export async function syncStudentSemesterClasses(userOrUid, options = {}) {
+  const [users, tas, classesList, mks] = await Promise.all([
+    getLocal(STORAGE_KEYS.USERS, INITIAL_USERS),
+    getLocal(STORAGE_KEYS.TA, INITIAL_TA),
+    getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES),
+    getLocal(STORAGE_KEYS.MK, INITIAL_MK)
+  ]);
+
+  const targetId = typeof userOrUid === 'object' && userOrUid !== null
+    ? (userOrUid.uid || userOrUid.id || userOrUid.nim)
+    : userOrUid;
+
+  let student = users.find(u => 
+    String(u.uid || u.id) === String(targetId) || 
+    (u.nim && String(u.nim) === String(targetId)) ||
+    (u.email && String(u.email).toLowerCase() === String(targetId).toLowerCase())
+  );
+
+  if (!student && typeof userOrUid === 'object' && userOrUid !== null) {
+    student = userOrUid;
+  }
+
+  if (!student || (student.role || '').toUpperCase() !== 'MAHASISWA') {
+    return { success: false, message: "Pengguna bukan mahasiswa terdaftar.", enrolledClasses: [] };
+  }
+
+  const activeTa = tas.find(t => t.isActive) || tas[0];
+  if (!activeTa) {
+    return { success: false, message: "Tidak ada periode Tahun Akademik yang aktif.", enrolledClasses: [] };
+  }
+
+  // Hitung semester berjalan mahasiswa secara akurat dari angkatan / NIM
+  const standing = calculateAcademicStanding(student.nim, student.angkatan, activeTa);
+  const currentSemester = standing.semester || Number(student.semester) || 1;
+  const prodiId = student.prodiId || 'prodi-s1-manajemen';
+  const studentUid = String(student.uid || student.id);
+
+  // Pastikan field semester di data user tersinkron
+  if (Number(student.semester) !== currentSemester) {
+    student.semester = currentSemester;
+    const userIdx = users.findIndex(u => String(u.uid || u.id) === studentUid);
+    if (userIdx >= 0) {
+      users[userIdx].semester = currentSemester;
+      await setLocal(STORAGE_KEYS.USERS, users);
+    }
+  }
+
+  let newlyEnrolledCount = 0;
+  const enrolledClasses = [];
+
+  const updatedClasses = classesList.map(cls => {
+    // Pastikan kelas berada pada semester aktif
+    const isTaMatch = cls.tahunAkademikId === activeTa.id || cls.namaTa === activeTa.namaTa;
+    if (!isTaMatch || cls.status === 'CLOSED') return cls;
+
+    const mk = mks.find(m => String(m.id) === String(cls.mataKuliahId) || m.kodeMk === cls.kodeMk);
+    if (!mk) return cls;
+
+    const courseSemester = Number(mk.semesterDefault || 1);
+    const isProdiMatch = !mk.prodiId || !prodiId || mk.prodiId === prodiId;
+
+    // Sinkronisasi kelas hanya jika semester mata kuliah sama persis dengan semester mahasiswa
+    if (courseSemester === currentSemester && isProdiMatch) {
+      if (!Array.isArray(cls.enrolledStudents)) {
+        cls.enrolledStudents = [];
+      }
+      if (!cls.enrolledStudents.includes(studentUid)) {
+        cls.enrolledStudents.push(studentUid);
+        newlyEnrolledCount++;
+      }
+      enrolledClasses.push(cls);
+    }
+    return cls;
+  });
+
+  if (newlyEnrolledCount > 0) {
+    await setLocal(STORAGE_KEYS.CLASSES, updatedClasses);
+  }
+
+  return {
+    success: true,
+    studentName: student.name,
+    studentSemester: currentSemester,
+    studentAngkatan: standing.angkatan,
+    newlyEnrolledCount,
+    totalSemesterClasses: enrolledClasses.length,
+    enrolledClasses
+  };
+}
+
+/**
+ * Sinkronisasi massal data kelas perkuliahan seluruh mahasiswa berdasarkan semester berjalan (Admin / BAA)
+ */
+export async function syncClassesAndStudentsBySemester(user) {
+  const [users, tas, classesList, mks] = await Promise.all([
+    getLocal(STORAGE_KEYS.USERS, INITIAL_USERS),
+    getLocal(STORAGE_KEYS.TA, INITIAL_TA),
+    getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES),
+    getLocal(STORAGE_KEYS.MK, INITIAL_MK)
+  ]);
+
+  const activeTa = tas.find(t => t.isActive) || tas[0];
+  if (!activeTa) {
+    return { success: false, message: "Tidak ada semester aktif BAA", totalSyncCount: 0 };
+  }
+
+  const students = users.filter(u => (u.role || '').toUpperCase() === 'MAHASISWA' && u.isActive !== false);
+
+  // Pastikan seluruh data mahasiswa memiliki semester yang sinkron
+  let usersChanged = false;
+  students.forEach(st => {
+    const standing = calculateAcademicStanding(st.nim, st.angkatan, activeTa);
+    if (standing && standing.semester && Number(st.semester) !== standing.semester) {
+      st.semester = standing.semester;
+      usersChanged = true;
+    }
+  });
+
+  if (usersChanged) {
+    await setLocal(STORAGE_KEYS.USERS, users);
+  }
+
+  let totalSyncCount = 0;
+  const updatedClasses = classesList.map(cls => {
+    const isTaMatch = cls.tahunAkademikId === activeTa.id || cls.namaTa === activeTa.namaTa;
+    if (!isTaMatch || cls.status === 'CLOSED') return cls;
+
+    const mk = mks.find(m => String(m.id) === String(cls.mataKuliahId) || m.kodeMk === cls.kodeMk);
+    if (!mk) return cls;
+
+    const courseSemester = Number(mk.semesterDefault || 1);
+    if (!Array.isArray(cls.enrolledStudents)) {
+      cls.enrolledStudents = [];
+    }
+
+    students.forEach(st => {
+      const standing = calculateAcademicStanding(st.nim, st.angkatan, activeTa);
+      const stSemester = standing.semester || Number(st.semester) || 1;
+      const isProdiMatch = !mk.prodiId || !st.prodiId || mk.prodiId === st.prodiId;
+      const stUid = String(st.uid || st.id);
+
+      // Pastikan mahasiswa semester X hanya masuk ke kelas semester X
+      if (stSemester === courseSemester && isProdiMatch) {
+        if (!cls.enrolledStudents.includes(stUid)) {
+          cls.enrolledStudents.push(stUid);
+          totalSyncCount++;
+        }
+      }
+    });
+
+    return cls;
+  });
+
+  if (totalSyncCount > 0) {
+    await setLocal(STORAGE_KEYS.CLASSES, updatedClasses);
+  }
+
+  if (user) {
+    await logAudit(
+      user, 
+      'SYNC_SEMESTER_CLASSES', 
+      `Sinkronisasi massal data kelas mahasiswa sesuai semester berjalan (${activeTa.namaTa}): ${totalSyncCount} penugasan kelas berhasil diperbarui.`
+    );
+  }
+
+  return {
+    success: true,
+    totalSyncCount,
+    activeSemester: activeTa.namaTa
+  };
 }
 
 export async function updateMeeting(classId, meetingNumber, updateFields, user) {

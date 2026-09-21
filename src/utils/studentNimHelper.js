@@ -66,9 +66,29 @@ export function getActiveAcademicPeriod() {
  * @param {object} customTa - Periode TA opsional { year, isGanjil, namaTa }
  */
 export function calculateAcademicStanding(nim, customAngkatan, customTa) {
-  const period = customTa || getActiveAcademicPeriod();
-  const currentAcademicYear = period.year;
-  const isGanjil = period.isGanjil;
+  let currentAcademicYear = 2026;
+  let isGanjil = true;
+
+  if (customTa && typeof customTa === 'object') {
+    if (customTa.year) {
+      currentAcademicYear = parseInt(customTa.year, 10) || 2026;
+      isGanjil = customTa.isGanjil !== undefined ? Boolean(customTa.isGanjil) : true;
+    } else if (customTa.kodeTa && customTa.kodeTa.length >= 4) {
+      currentAcademicYear = parseInt(customTa.kodeTa.substring(0, 4), 10) || 2026;
+      isGanjil = customTa.semesterTipe 
+        ? customTa.semesterTipe.toUpperCase() === 'GANJIL' 
+        : !customTa.kodeTa.endsWith('2');
+    } else if (customTa.namaTa) {
+      const match = customTa.namaTa.match(/(\d{4})/);
+      if (match) currentAcademicYear = parseInt(match[1], 10);
+      isGanjil = customTa.namaTa.toLowerCase().includes('ganjil') || 
+                 (customTa.semesterTipe || '').toUpperCase() === 'GANJIL';
+    }
+  } else {
+    const period = getActiveAcademicPeriod();
+    currentAcademicYear = period.year;
+    isGanjil = period.isGanjil;
+  }
 
   let angkatan = null;
   if (customAngkatan) {

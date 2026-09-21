@@ -9,9 +9,12 @@ import {
   getTahunAkademik, 
   getUsers,
   enrollStudent,
+  syncStudentSemesterClasses,
+  syncClassesAndStudentsBySemester,
   subscribeToDataSync,
   isClassAssignedToLecturer
 } from '../firebase/firestoreService';
+import { calculateAcademicStanding } from '../utils/studentNimHelper';
 import ManageClassStudentsModal from '../components/classes/ManageClassStudentsModal';
 import { showSuccessToast, showErrorAlert, showConfirmDialog } from '../utils/alert';
 import { 
@@ -33,7 +36,8 @@ import {
   Edit3,
   Trash2,
   Settings,
-  Award
+  Award,
+  Sparkles
 } from 'lucide-react';
 
 export default function ClassListPage({ onSelectClass, onNavigate }) {
@@ -49,6 +53,7 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
   // Sub-filter untuk Dosen & Mahasiswa
   const [filterDosenScope, setFilterDosenScope] = useState('ALL'); // 'ALL' | 'MY_CLASSES'
   const [filterMhsScope, setFilterMhsScope] = useState('MY_SEMESTER'); // 'MY_SEMESTER' | 'ENROLLED' | 'ALL'
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Modal Buka Kelas Baru (Khusus Admin BAA)
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -321,12 +326,55 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
   const activeTa = tas.find(t => t.isActive);
   const selectedTa = tas.find(t => t.id === selectedSemesterId);
 
-  // Hitung semester berjalan mahasiswa berdasarkan angkatan atau field semester
+  // Hitung standing akademik & semester berjalan mahasiswa secara dinamis dan akurat
+  const studentAcademicStanding = isMahasiswa 
+    ? calculateAcademicStanding(user?.nim, user?.angkatan, activeTa) 
+    : null;
   const studentCurrentSemester = isMahasiswa ? (
-    user?.semester ? Number(user.semester) : (
-      user?.angkatan ? Math.max(1, ((2026 - Number(user.angkatan)) * 2) + 1) : 1
-    )
+    studentAcademicStanding?.semester || (user?.semester ? Number(user.semester) : 1)
   ) : null;
+
+  // Handler Sinkronisasi Mandiri Paket Semester Mahasiswa
+  const handleSyncMySemesterClasses = async () => {
+    setIsSyncing(true);
+    try {
+      const res = await syncStudentSemesterClasses(user);
+      if (res.newlyEnrolledCount > 0) {
+        showSuccessToast(`Berhasil mengambil ${res.newlyEnrolledCount} kelas paket Semester ${studentCurrentSemester}!`);
+      } else {
+        showSuccessToast(`Seluruh kelas paket Semester ${studentCurrentSemester} sudah terdaftar di akun Anda.`);
+      }
+      await loadData();
+    } catch (err) {
+      showErrorAlert("Gagal Sinkronisasi Kelas", err.message);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Handler Sinkronisasi Massal Seluruh Mahasiswa Sesuai Semester (Admin / BAA)
+  const handleSyncAllStudentsBySemester = async () => {
+    const confirmed = await showConfirmDialog({
+      title: 'Sinkronisasi Kelas Mahasiswa?',
+      text: 'Sistem akan memetakan seluruh mahasiswa aktif ke kelas perkuliahan sesuai semester dan program studi masing-masing (Mahasiswa Semester 1 ke Kelas Semester 1, Semester 3 ke Kelas Semester 3, dst).',
+      confirmButtonText: 'Ya, Sinkronkan Sekarang',
+      cancelButtonText: 'Batal',
+      icon: 'question'
+    });
+
+    if (!confirmed) return;
+
+    setIsSyncing(true);
+    try {
+      const res = await syncClassesAndStudentsBySemester(user);
+      showSuccessToast(`Sinkronisasi selesai! ${res.totalSyncCount} penugasan kelas semester berhasil disinkronkan.`);
+      await loadData();
+    } catch (err) {
+      showErrorAlert("Gagal Sinkronisasi", err.message);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // Filter Kelas berdasarkan Semester dan Peran
   const filteredClasses = classes.filter(cls => {
@@ -397,20 +445,31 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
           </p>
         </div>
 
-        {/* Tombol Buat Kelas Baru: HANYA untuk Admin BAA / Super Admin */}
+        {/* Tombol Aksi BAA / Super Admin */}
         {isAdmin && (
-          <button
-            onClick={() => {
-              if (selectedSemesterId && selectedSemesterId !== 'ALL') {
-                setFormData(prev => ({ ...prev, tahunAkademikId: selectedSemesterId }));
-              }
-              setShowCreateModal(true);
-            }}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand-800 text-white rounded-xl text-xs font-bold shadow hover:bg-brand-900 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Buka Kelas Kuliah Baru (BAA)
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={handleSyncAllStudentsBySemester}
+              disabled={isSyncing}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-indigo-700 hover:bg-indigo-800 disabled:bg-indigo-900 text-white rounded-xl text-xs font-bold shadow transition-all cursor-pointer"
+              title="Sinkronisasi otomatis seluruh mahasiswa aktif ke kelas perkuliahan sesuai semester"
+            >
+              <Sparkles className={`w-4 h-4 ${isSyncing ? 'animate-spin text-amber-300' : 'text-amber-300'}`} />
+              <span>{isSyncing ? 'Menyinkronkan...' : 'Sinkronkan Kelas Sesuai Semester'}</span>
+            </button>
+            <button
+              onClick={() => {
+                if (selectedSemesterId && selectedSemesterId !== 'ALL') {
+                  setFormData(prev => ({ ...prev, tahunAkademikId: selectedSemesterId }));
+                }
+                setShowCreateModal(true);
+              }}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand-800 text-white rounded-xl text-xs font-bold shadow hover:bg-brand-900 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Buka Kelas Kuliah Baru (BAA)
+            </button>
+          </div>
         )}
       </div>
 
@@ -440,6 +499,41 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
                 ? 'Pembukaan semester dan penambahan kelas kuliah baru sepenuhnya diatur oleh Bagian Akademik (BAA). Anda dapat mengelola materi (Link Drive), media perkuliahan (Meet/Zoom), presensi, serta penilaian mahasiswa pada kelas yang Anda ampu.'
                 : 'Kelas perkuliahan dan semester berjalan diatur oleh Bagian Akademik (BAA). Pilih kelas yang Anda ikuti untuk mengunduh materi bahan ajar, bergabung sesi tatap muka daring, dan mengunggah tugas.'}
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* Banner Sinkronisasi KRS Paket Semester Mahasiswa */}
+      {isMahasiswa && activeTa && (
+        <div className="bg-gradient-to-r from-brand-900 via-indigo-950 to-slate-900 text-white rounded-2xl p-4 shadow-sm border border-brand-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[11px] font-bold flex items-center gap-1">
+                <CheckCircle className="w-3 h-3 text-emerald-400" />
+                {studentAcademicStanding?.tingkat || `Tingkat Semester ${studentCurrentSemester}`}
+              </span>
+              <span className="text-xs text-slate-300">
+                Angkatan {studentAcademicStanding?.angkatan || user?.angkatan || '-'} • Semester {studentCurrentSemester} ({activeTa.namaTa})
+              </span>
+            </div>
+            <h3 className="text-base font-bold text-white flex items-center gap-2">
+              Paket Kelas Perkuliahan Semester {studentCurrentSemester}
+            </h3>
+            <p className="text-xs text-slate-300 leading-relaxed max-w-2xl">
+              Sesuai ketentuan kurikulum OBE STIE Nasional, mahasiswa Semester {studentCurrentSemester} otomatis dialokasikan ke mata kuliah paket semester berjalan. Klik tombol sinkronkan di samping untuk mengambil seluruh mata kuliah semester Anda secara otomatis.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={handleSyncMySemesterClasses}
+              disabled={isSyncing}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5 cursor-pointer"
+              title={`Sinkronkan seluruh kelas paket Semester ${studentCurrentSemester}`}
+            >
+              <Sparkles className={`w-4 h-4 ${isSyncing ? 'animate-spin text-amber-300' : 'text-amber-300'}`} />
+              <span>{isSyncing ? 'Menyinkronkan...' : `Ambil / Sinkronkan Paket Kelas Sem. ${studentCurrentSemester}`}</span>
+            </button>
           </div>
         </div>
       )}

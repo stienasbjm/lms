@@ -214,6 +214,21 @@ export const INITIAL_MK = [
     ]
   },
   {
+    id: 'mk-mnj-201',
+    kodeMk: 'MNJ201',
+    namaMk: 'Manajemen Pemasaran',
+    sks: 3,
+    semesterDefault: 3,
+    prodiId: 'prodi-s1-manajemen',
+    dosenId: 'user-dosen-1',
+    kurikulum: 'Kurikulum OBE (Outcome-Based Education)',
+    cpl: ['CPL-1 (Etika Bisnis)', 'CPL-3 (Strategi Bauran Pemasaran OBE)'],
+    cpmk: [
+      'CPMK-1: Mampu menganalisis segmentasi, targeting, dan positioning (STP) pasar sasaran',
+      'CPMK-2: Mampu merancang program pemasaran terpadu dan strategi pemasaran digital'
+    ]
+  },
+  {
     id: 'mk-sim-401',
     kodeMk: 'SIM401',
     namaMk: 'Sistem Informasi Manajemen',
@@ -334,7 +349,7 @@ export const INITIAL_CLASSES = [
     kuota: 40,
     status: 'OPEN',
     progressPercentage: 0,
-    enrolledStudents: [],
+    enrolledStudents: ['user-mhs-4'],
     meetings: generateDefault16Meetings('Pengantar Bisnis & Kewirausahaan'),
     grades: {}
   },
@@ -418,8 +433,29 @@ export const INITIAL_CLASSES = [
     kuota: 40,
     status: 'OPEN',
     progressPercentage: 30,
-    enrolledStudents: [],
+    enrolledStudents: ['user-mhs-1789806444944'],
     meetings: generateDefault16Meetings('Statistika Ekonomi & Bisnis'),
+    grades: {}
+  },
+  {
+    id: 'kelas-mnj-201-a',
+    mataKuliahId: 'mk-mnj-201',
+    namaMk: 'Manajemen Pemasaran',
+    kodeMk: 'MNJ201',
+    sks: 3,
+    tahunAkademikId: 'ta-20261',
+    namaTa: '2026/2027 Ganjil',
+    dosenId: 'user-dosen-1',
+    namaDosen: 'Dr. H. Muhammad Ramli, S.E., M.M.',
+    namaKelas: 'A',
+    ruang: 'Ruang Teori 101',
+    hari: 'Selasa',
+    jam: '08:00 - 10:30 WITA',
+    kuota: 40,
+    status: 'OPEN',
+    progressPercentage: 20,
+    enrolledStudents: ['user-mhs-1789806444944'],
+    meetings: generateDefault16Meetings('Manajemen Pemasaran'),
     grades: {}
   },
   {

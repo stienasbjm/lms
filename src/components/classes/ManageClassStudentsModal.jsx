@@ -3,9 +3,11 @@ import { useAuth } from '../../context/AuthContext';
 import { 
   getUsers, 
   getProdi,
+  getMataKuliah,
   enrollStudent, 
   unenrollStudent 
 } from '../../firebase/firestoreService';
+import { calculateAcademicStanding } from '../../utils/studentNimHelper';
 import { showSuccessToast, showErrorAlert, showConfirmDialog } from '../../utils/alert';
 import { 
   X, 
@@ -37,6 +39,7 @@ export default function ManageClassStudentsModal({
   const [actionLoading, setActionLoading] = useState(false);
   const [allUsers, setAllUsers] = useState([]);
   const [prodis, setProdis] = useState([]);
+  const [allMks, setAllMks] = useState([]);
   
   // Search & Filter States
   const [searchEnrolled, setSearchEnrolled] = useState('');
@@ -63,18 +66,25 @@ export default function ManageClassStudentsModal({
   const loadInitialData = async () => {
     setLoading(true);
     try {
-      const [users, prodiList] = await Promise.all([
+      const [users, prodiList, mkList] = await Promise.all([
         getUsers(),
-        getProdi()
+        getProdi(),
+        getMataKuliah()
       ]);
       setAllUsers(users);
       setProdis(prodiList);
+      setAllMks(mkList);
     } catch (err) {
-      console.error("Gagal memuat data pengguna/prodi:", err);
+      console.error("Gagal memuat data pengguna/prodi/mk:", err);
     } finally {
       setLoading(false);
     }
   };
+
+  const targetMk = useMemo(() => {
+    return allMks.find(m => String(m.id) === String(classItem?.mataKuliahId) || m.kodeMk === classItem?.kodeMk);
+  }, [allMks, classItem]);
+  const courseSemester = Number(targetMk?.semesterDefault || 1);
 
   const enrolledIds = useMemo(() => {
     return classItem?.enrolledStudents || [];
@@ -267,6 +277,25 @@ export default function ManageClassStudentsModal({
       // Check all visible
       const newSet = new Set([...selectedStudentIds, ...visibleIds]);
       setSelectedStudentIds(Array.from(newSet));
+    }
+  };
+
+  // Pilih otomatis seluruh mahasiswa yang semester dan prodinya cocok dengan mata kuliah ini
+  const handleSelectMatchingSemesterStudents = () => {
+    const matchingIds = availableStudents
+      .filter(s => {
+        const standing = calculateAcademicStanding(s.nim, s.angkatan);
+        const sem = standing.semester || Number(s.semester) || 1;
+        const prodiMatch = !targetMk?.prodiId || !s.prodiId || s.prodiId === targetMk.prodiId;
+        return sem === courseSemester && prodiMatch;
+      })
+      .map(s => s.uid || s.id);
+
+    setSelectedStudentIds(matchingIds);
+    if (matchingIds.length > 0) {
+      showSuccessToast(`${matchingIds.length} mahasiswa Semester ${courseSemester} berhasil dipilih.`);
+    } else {
+      showSuccessToast(`Tidak ada mahasiswa Semester ${courseSemester} yang belum terdaftar.`);
     }
   };
 
@@ -529,11 +558,11 @@ export default function ManageClassStudentsModal({
 
               {/* Action Bar for Batch Selection */}
               <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2 pt-1 border-t border-slate-100">
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={toggleSelectAllVisible}
-                    className="text-xs font-semibold text-slate-700 hover:text-brand-800 flex items-center gap-1.5"
+                    className="text-xs font-semibold text-slate-700 hover:text-brand-800 flex items-center gap-1.5 cursor-pointer"
                   >
                     {availableStudents.length > 0 && availableStudents.every(s => selectedStudentIds.includes(s.uid || s.id)) ? (
                       <CheckSquare className="w-4 h-4 text-brand-800" />
@@ -542,6 +571,18 @@ export default function ManageClassStudentsModal({
                     )}
                     <span>Pilih Semua Tampil ({availableStudents.length})</span>
                   </button>
+
+                  {courseSemester && (
+                    <button
+                      type="button"
+                      onClick={handleSelectMatchingSemesterStudents}
+                      className="text-[11px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg border border-indigo-200 flex items-center gap-1 transition-colors cursor-pointer"
+                      title={`Pilih seluruh mahasiswa yang berada di Semester ${courseSemester}`}
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Pilih Mahasiswa Semester {courseSemester}</span>
+                    </button>
+                  )}
 
                   {selectedStudentIds.length > 0 && (
                     <span className="text-xs font-bold text-brand-800 bg-brand-50 px-2 py-0.5 rounded-lg border border-brand-200">
@@ -586,6 +627,9 @@ export default function ManageClassStudentsModal({
                     const studentId = mhs.uid || mhs.id;
                     const isSelected = selectedStudentIds.includes(studentId);
                     const matchedProdi = prodis.find(p => p.id === mhs.prodiId);
+                    const standing = calculateAcademicStanding(mhs.nim, mhs.angkatan);
+                    const sem = standing.semester || Number(mhs.semester) || 1;
+                    const isExactSemester = sem === courseSemester;
 
                     return (
                       <div 
@@ -610,6 +654,13 @@ export default function ManageClassStudentsModal({
                           <div className="min-w-0">
                             <div className="font-bold text-xs sm:text-sm text-slate-900 truncate flex items-center gap-1.5">
                               <span>{mhs.name}</span>
+                              <span className={`font-bold px-1.5 py-0.5 rounded border text-[10px] ${
+                                isExactSemester 
+                                  ? 'bg-indigo-50 text-indigo-800 border-indigo-200 font-extrabold' 
+                                  : 'bg-slate-100 text-slate-600 border-slate-200'
+                              }`}>
+                                Semester {sem} {isExactSemester ? '• Target Kelas' : ''}
+                              </span>
                             </div>
                             <div className="flex items-center gap-2 text-[11px] text-slate-500 font-mono mt-0.5 flex-wrap">
                               <span>NIM: <strong className="text-slate-700">{mhs.nim || mhs.username || '-'}</strong></span>
@@ -629,7 +680,7 @@ export default function ManageClassStudentsModal({
                         <button
                           disabled={actionLoading || (!bypassQuota && isFull)}
                           onClick={() => handleAddSingleStudent(mhs)}
-                          className="px-3 py-1.5 rounded-xl bg-brand-50 hover:bg-brand-100 text-brand-800 border border-brand-200 font-bold text-xs flex items-center gap-1.5 transition-colors shadow-sm shrink-0 disabled:opacity-50"
+                          className="px-3 py-1.5 rounded-xl bg-brand-50 hover:bg-brand-100 text-brand-800 border border-brand-200 font-bold text-xs flex items-center gap-1.5 transition-colors shadow-sm shrink-0 disabled:opacity-50 cursor-pointer"
                         >
                           <UserPlus className="w-3.5 h-3.5" />
                           <span>Tambahkan</span>
