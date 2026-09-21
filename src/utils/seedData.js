@@ -49,7 +49,7 @@ export const INITIAL_USERS = [
   {
     uid: 'user-admin-2',
     email: 'akademik@stienas.ac.id',
-    aliasEmail: 'adminakademik@stienas.ac.id',
+    aliasEmail: 'adminakademik@stienas.ac.id, baa@stienas.ac.id',
     name: 'Admin Bagian Akademik (BAA)',
     role: 'ADMIN_AKADEMIK',
     username: 'akademik',

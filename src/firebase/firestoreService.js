@@ -90,10 +90,27 @@ export function isUserDeleted(user, deletedList) {
   const email = user.email ? String(user.email).toLowerCase().trim() : '';
   const username = user.username ? String(user.username).toLowerCase().trim() : '';
   const nim = user.nim ? String(user.nim).trim() : '';
-  const nidn = user.nidn ? String(user.nidn).trim() : '';
+  const role = (user.role || '').toUpperCase();
 
-  // Akun Rabiyah selalu dilindungi dari penghapusan
-  if (uid === 'user-mhs-1789806444944' || id === 'user-mhs-1789806444944' || email === 'raby79279@gmail.com' || nim === '20251111644') {
+  // Akun inti institusi (Super Admin, BAA, Dosen utama, dan Mahasiswa resmi) DILINDUNGI MUTLAK dari penghapusan
+  if (
+    role === 'SUPER_ADMIN' || 
+    role === 'ADMIN_AKADEMIK' || 
+    uid === 'user-admin-1' || 
+    id === 'user-admin-1' ||
+    uid === 'user-admin-2' || 
+    id === 'user-admin-2' ||
+    email === 'admin@stienas.ac.id' ||
+    email === 'akademik@stienas.ac.id' ||
+    email === 'superadmin@stienas.ac.id' ||
+    email === 'adminakademik@stienas.ac.id' ||
+    username === 'admin' ||
+    username === 'akademik' ||
+    uid === 'user-mhs-1789806444944' || 
+    id === 'user-mhs-1789806444944' || 
+    email === 'raby79279@gmail.com' || 
+    nim === '20251111644'
+  ) {
     return false;
   }
 
@@ -440,24 +457,41 @@ export async function initializeLocalStore() {
     await setLocal(STORAGE_KEYS.TA, cleanTa);
   }
 
-  // Pulihkan akun mahasiswa Rabiyah jika sebelumnya tidak sengaja terhapus
+  // Bersihkan akun inti sistem (Admin, BAA, Dosen, Rabiyah) dari blacklist jika pernah tercatat
   try {
     const delUsersRaw = localStorage.getItem('STIE_LMS_DELETED_USERS');
     if (delUsersRaw) {
       const parsed = JSON.parse(delUsersRaw);
-      const filtered = parsed.filter(id => id !== 'user-mhs-1789806444944' && id !== 'raby79279@gmail.com');
+      const filtered = parsed.filter(id => 
+        id !== 'user-admin-1' && 
+        id !== 'user-admin-2' && 
+        id !== 'admin@stienas.ac.id' && 
+        id !== 'akademik@stienas.ac.id' && 
+        id !== 'admin' && 
+        id !== 'akademik' && 
+        id !== 'user-mhs-1789806444944' && 
+        id !== 'raby79279@gmail.com'
+      );
       localStorage.setItem('STIE_LMS_DELETED_USERS', JSON.stringify(filtered));
     }
   } catch (e) {}
 
   const currentUsers = await getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
-  // Pastikan akun Rabiyah aktif dan tersedia di daftar pengguna
-  if (!currentUsers.some(u => String(u.uid || u.id) === 'user-mhs-1789806444944' || u.email === 'raby79279@gmail.com')) {
-    const rabiyah = INITIAL_USERS.find(u => u.uid === 'user-mhs-1789806444944');
-    if (rabiyah) {
-      currentUsers.unshift(rabiyah);
-      await setLocal(STORAGE_KEYS.USERS, currentUsers);
+  // Pastikan seluruh akun inti (Super Admin, BAA, Dosen, Mahasiswa Utama) selalu ada dan aktif di currentUsers
+  let usersChanged = false;
+  INITIAL_USERS.forEach(coreUser => {
+    const exists = currentUsers.some(u => 
+      (u.uid && (u.uid === coreUser.uid || u.id === coreUser.uid)) ||
+      (u.email && u.email.toLowerCase().trim() === coreUser.email.toLowerCase().trim()) ||
+      (coreUser.username && u.username && u.username.toLowerCase().trim() === coreUser.username.toLowerCase().trim())
+    );
+    if (!exists) {
+      currentUsers.unshift({ ...coreUser });
+      usersChanged = true;
     }
+  });
+  if (usersChanged) {
+    await setLocal(STORAGE_KEYS.USERS, currentUsers);
   }
 
   // Pastikan Mata Kuliah yang baru disertakan dan yang dihapus tidak dibangkitkan
@@ -1026,6 +1060,14 @@ export async function deleteUser(targetUserOrUid, currentUser) {
   }
   if (currentEmail && targetEmail && currentEmail === targetEmail) {
     throw new Error("Anda tidak dapat menghapus akun Anda sendiri.");
+  }
+
+  // Proteksi integritas: Akun utama Administrator dan BAA tidak dapat dihapus
+  if (targetUid === 'user-admin-1' || targetEmail === 'admin@stienas.ac.id' || effectiveTarget.role === 'SUPER_ADMIN') {
+    throw new Error("Akun Super Administrator sistem tidak dapat dihapus demi integritas LMS.");
+  }
+  if (targetUid === 'user-admin-2' || targetEmail === 'akademik@stienas.ac.id') {
+    throw new Error("Akun Bagian Akademik (BAA) utama sistem tidak dapat dihapus.");
   }
 
   const currentRole = (activeUser?.role || '').toUpperCase();
