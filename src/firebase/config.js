@@ -25,11 +25,13 @@ const DEFAULT_FIREBASE_CONFIG = {
 // Ambil konfigurasi dari localStorage jika ada, atau fallback ke DEFAULT resmi
 export function getSavedFirebaseConfig() {
   try {
-    const saved = localStorage.getItem('STIE_LMS_FIREBASE_CONFIG');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed && parsed.apiKey && !parsed.apiKey.includes('DummyKey')) {
-        return parsed;
+    if (typeof localStorage !== 'undefined') {
+      const saved = localStorage.getItem('STIE_LMS_FIREBASE_CONFIG');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.apiKey && !parsed.apiKey.includes('DummyKey')) {
+          return parsed;
+        }
       }
     }
   } catch (e) {

@@ -50,14 +50,29 @@ export async function loginUser(identifier, password) {
     throw new Error("Silakan masukkan kata sandi akun Anda.");
   }
 
-  // 1. Kumpulkan seluruh pengguna dengan selalu menggabungkan INITIAL_USERS dan data lokal secara komprehensif
-  const userMap = new Map();
+  // 1. Kumpulkan seluruh pengguna dengan memuat dari database (Firestore + local) dan INITIAL_USERS
+  let remoteUsers = [];
+  try {
+    remoteUsers = await getUsers();
+  } catch (e) {
+    remoteUsers = [];
+  }
 
-  // Masukkan pengguna bawaan sistem (INITIAL_USERS) terlebih dahulu
+  const userMap = new Map();
   INITIAL_USERS.forEach(u => {
     const key = u.uid || u.id || u.email;
     if (key) userMap.set(String(key).toLowerCase(), { ...u });
   });
+
+  if (Array.isArray(remoteUsers)) {
+    remoteUsers.forEach(u => {
+      const key = u.uid || u.id || u.email;
+      if (key) {
+        const existing = userMap.get(String(key).toLowerCase());
+        userMap.set(String(key).toLowerCase(), { ...(existing || {}), ...u });
+      }
+    });
+  }
 
   // Timpa/gabungkan dengan data dari localStorage jika ada modifikasi
   try {
@@ -127,6 +142,27 @@ export async function loginUser(identifier, password) {
 
     return false;
   });
+
+  // Jika belum ditemukan di cache, cari langsung di koleksi 'users' Cloud Firestore
+  if (!foundUser && isRealFirebaseConfigured() && db) {
+    try {
+      const snap = await getDocs(collection(db, "users"));
+      for (const d of snap.docs) {
+        const uData = { id: d.id, uid: d.id, ...d.data() };
+        const uEmail = (uData.email || '').toLowerCase().trim();
+        const uUser = (uData.username || '').toLowerCase().trim();
+        const uNim = String(uData.nim || '').trim().toLowerCase();
+        if (uEmail === trimmed || uUser === trimmed || uNim === trimmed) {
+          foundUser = uData;
+          combinedUsers.push(uData);
+          localStorage.setItem('STIE_LMS_USERS', JSON.stringify(combinedUsers));
+          break;
+        }
+      }
+    } catch (e) {
+      console.warn("Direct Firestore search error on login:", e);
+    }
+  }
 
   // Jika cocok di database pengguna lokal:
   if (foundUser) {
@@ -280,12 +316,29 @@ export async function requestPasswordReset(identifier) {
     throw new Error("Silakan masukkan alamat email, NIM, atau username akun Anda.");
   }
 
-  // 1. Kumpulkan seluruh pengguna dengan memadukan INITIAL_USERS dan data lokal
+  // 1. Kumpulkan seluruh pengguna dengan memadukan INITIAL_USERS, remote users, dan data lokal
+  let remoteUsers = [];
+  try {
+    remoteUsers = await getUsers();
+  } catch (e) {
+    remoteUsers = [];
+  }
+
   const userMap = new Map();
   INITIAL_USERS.forEach(u => {
     const key = u.uid || u.id || u.email;
     if (key) userMap.set(String(key).toLowerCase(), { ...u });
   });
+
+  if (Array.isArray(remoteUsers)) {
+    remoteUsers.forEach(u => {
+      const key = u.uid || u.id || u.email;
+      if (key) {
+        const existing = userMap.get(String(key).toLowerCase());
+        userMap.set(String(key).toLowerCase(), { ...(existing || {}), ...u });
+      }
+    });
+  }
 
   try {
     const stored = localStorage.getItem('STIE_LMS_USERS');
@@ -306,7 +359,7 @@ export async function requestPasswordReset(identifier) {
   let combinedUsers = Array.from(userMap.values());
 
   // 2. Cari pengguna berdasarkan Email, Alias, Username, NIM, atau NIDN
-  const foundUser = combinedUsers.find(u => {
+  let foundUser = combinedUsers.find(u => {
     const uEmail = (u.email || '').toLowerCase().trim();
     const uAlias = (u.aliasEmail || '').toLowerCase().trim();
     const uUser = (u.username || '').toLowerCase().trim();
@@ -320,6 +373,26 @@ export async function requestPasswordReset(identifier) {
       (uNidn && uNidn === trimmed)
     );
   });
+
+  // Jika belum ditemukan di cache, cari langsung di koleksi 'users' Cloud Firestore
+  if (!foundUser && isRealFirebaseConfigured() && db) {
+    try {
+      const snap = await getDocs(collection(db, "users"));
+      for (const d of snap.docs) {
+        const uData = { id: d.id, uid: d.id, ...d.data() };
+        const uEmail = (uData.email || '').toLowerCase().trim();
+        const uUser = (uData.username || '').toLowerCase().trim();
+        const uNim = String(uData.nim || '').trim().toLowerCase();
+        const uNidn = String(uData.nidn || '').trim().toLowerCase();
+        if (uEmail === trimmed || uUser === trimmed || uNim === trimmed || uNidn === trimmed) {
+          foundUser = uData;
+          break;
+        }
+      }
+    } catch (e) {
+      console.warn("Direct Firestore search error on password reset:", e);
+    }
+  }
 
   let targetEmail = null;
   if (foundUser && foundUser.email) {

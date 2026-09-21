@@ -19,7 +19,8 @@ import {
   markClassMessagesAsRead,
   isClassAssignedToLecturer,
   editClassMessage,
-  deleteClassMessage
+  deleteClassMessage,
+  generateDefault16Meetings
 } from '../firebase/firestoreService';
 import ManageClassStudentsModal from '../components/classes/ManageClassStudentsModal';
 import { compressImageIfNeeded, formatBytes } from '../utils/imageCompressor';
@@ -62,6 +63,21 @@ import {
 } from 'lucide-react';
 import { showSuccessAlert, showErrorAlert, showSuccessToast, showErrorToast, showConfirmDialog } from '../utils/alert';
 
+/**
+ * Safe date formatter — mencegah crash jika nilai tanggal null, undefined, atau tidak valid.
+ * Mengembalikan string kosong jika tanggal tidak valid, sehingga tidak memicu ErrorBoundary.
+ */
+function safeFormatDate(value, options = {}) {
+  if (!value) return '';
+  try {
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('id-ID', options);
+  } catch (e) {
+    return '';
+  }
+}
+
 export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETINGS' }) {
   const { user, isAdmin, isBaa, isSuperAdmin, isDosen, isMahasiswa } = useAuth();
   const [classData, setClassData] = useState(null);
@@ -102,6 +118,19 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
     hasTask: true
   });
 
+  // Pastikan 16 pertemuan RPS selalu terdefinisi secara utuh dan aman
+  const meetings = (Array.isArray(classData?.meetings) && classData.meetings.length > 0)
+    ? classData.meetings
+    : generateDefault16Meetings(classData?.namaMk || 'Mata Kuliah');
+
+  const activeMeeting = (meetings && meetings.length > 0)
+    ? (meetings.find(m => m.pertemuanKe === activeMeetingNumber) || meetings[0])
+    : generateDefault16Meetings(classData?.namaMk || 'Mata Kuliah')[0];
+
+  const enrolledStudentsList = allUsers.filter(u => (classData?.enrolledStudents || []).includes(u.uid || u.id));
+  const isLecturerOfThisClass = isDosen && isClassAssignedToLecturer(classData, user);
+  const canManageClass = isAdmin || isBaa || isSuperAdmin || isLecturerOfThisClass;
+
   // Handler: Toggle buka/tutup kelas per pertemuan oleh Dosen
   const handleToggleClassOpen = async () => {
     if (!isTaActive) return showErrorToast('Semester telah ditutup. Tindakan tidak diizinkan.');
@@ -121,7 +150,10 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
       // Optimistic update — UI langsung diperbarui
       setClassData(prev => {
         if (!prev) return prev;
-        const updatedMeetings = prev.meetings.map(m =>
+        const baseMeetings = (Array.isArray(prev.meetings) && prev.meetings.length > 0)
+          ? prev.meetings
+          : generateDefault16Meetings(prev.namaMk || 'Mata Kuliah');
+        const updatedMeetings = baseMeetings.map(m =>
           m.pertemuanKe === activeMeetingNumber ? { ...m, isOpen: newIsOpen } : m
         );
         return { ...prev, meetings: updatedMeetings };
@@ -156,7 +188,10 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
     // Optimistic update — UI langsung diperbarui seketika
     setClassData(prev => {
       if (!prev) return prev;
-      const updatedMeetings = prev.meetings.map(m =>
+      const baseMeetings = (Array.isArray(prev.meetings) && prev.meetings.length > 0)
+        ? prev.meetings
+        : generateDefault16Meetings(prev.namaMk || 'Mata Kuliah');
+      const updatedMeetings = baseMeetings.map(m =>
         m.pertemuanKe === activeMeetingNumber ? { ...m, isTaskOpen: newStatus } : m
       );
       return { ...prev, meetings: updatedMeetings };
@@ -220,8 +255,11 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
 
       // 1. Optimistic update — UI langsung diperbarui seketika
       setClassData(prev => {
-        if (!prev || !prev.meetings) return prev;
-        const updatedMeetings = prev.meetings.map(m =>
+        if (!prev) return prev;
+        const baseMeetings = (Array.isArray(prev.meetings) && prev.meetings.length > 0)
+          ? prev.meetings
+          : generateDefault16Meetings(prev.namaMk || 'Mata Kuliah');
+        const updatedMeetings = baseMeetings.map(m =>
           m.pertemuanKe === activeMeetingNumber ? { ...m, ...updatedFields } : m
         );
         return { ...prev, meetings: updatedMeetings };
@@ -469,11 +507,6 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
     );
   }
 
-  const activeMeeting = classData.meetings.find(m => m.pertemuanKe === activeMeetingNumber) || classData.meetings[0];
-  const enrolledStudentsList = allUsers.filter(u => (classData.enrolledStudents || []).includes(u.uid));
-  const isLecturerOfThisClass = isDosen && isClassAssignedToLecturer(classData, user);
-  const canManageClass = isAdmin || isLecturerOfThisClass;
-
   // Buka modal edit judul & rincian pertemuan (Dosen)
   const handleOpenEditMeeting = () => {
     setEditMeetingForm({
@@ -497,8 +530,11 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
     try {
       // Optimistic update
       setClassData(prev => {
-        if (!prev || !prev.meetings) return prev;
-        const updatedMeetings = prev.meetings.map(m => {
+        if (!prev) return prev;
+        const baseMeetings = (Array.isArray(prev.meetings) && prev.meetings.length > 0)
+          ? prev.meetings
+          : generateDefault16Meetings(prev.namaMk || 'Mata Kuliah');
+        const updatedMeetings = baseMeetings.map(m => {
           if (m.pertemuanKe === activeMeeting.pertemuanKe) {
             return {
               ...m,
@@ -548,8 +584,11 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
     try {
       // Optimistic update
       setClassData(prev => {
-        if (!prev || !prev.meetings) return prev;
-        const updatedMeetings = prev.meetings.map(m => {
+        if (!prev) return prev;
+        const baseMeetings = (Array.isArray(prev.meetings) && prev.meetings.length > 0)
+          ? prev.meetings
+          : generateDefault16Meetings(prev.namaMk || 'Mata Kuliah');
+        const updatedMeetings = baseMeetings.map(m => {
           if (m.pertemuanKe === activeMeetingNumber) {
             return {
               ...m,
@@ -646,8 +685,11 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
     try {
       // Optimistic update: langsung mutasi state memori lokal agar tampilan presensi seketika berubah tanpa jeda / kedap-kedip
       setClassData(prev => {
-        if (!prev || !prev.meetings) return prev;
-        const updatedMeetings = prev.meetings.map(m => {
+        if (!prev) return prev;
+        const baseMeetings = (Array.isArray(prev.meetings) && prev.meetings.length > 0)
+          ? prev.meetings
+          : generateDefault16Meetings(prev.namaMk || 'Mata Kuliah');
+        const updatedMeetings = baseMeetings.map(m => {
           if (m.pertemuanKe === activeMeetingNumber) {
             return {
               ...m,
@@ -796,8 +838,8 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
                   Tim Dosen (Team Teaching): <strong className="text-white">{
                     classData.teamTeaching.map(tUid => {
                       const d = allUsers.find(u => (u.uid || u.id) === (tUid?.uid || tUid));
-                      return d ? d.name : (tUid?.name || tUid);
-                    }).join(', ')
+                      return d ? d.name : (tUid?.name || (typeof tUid === 'string' ? tUid : ''));
+                    }).filter(Boolean).join(', ')
                   }</strong>
                 </p>
               )}
@@ -898,7 +940,7 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
 
             {/* 16 Pertemuan Pills */}
             <div className="grid grid-cols-4 sm:grid-cols-8 xl:grid-cols-16 gap-1.5 sm:gap-2 text-center">
-              {classData.meetings.map(m => {
+              {meetings.map(m => {
                 const isSelected = m.pertemuanKe === activeMeetingNumber;
                 const isUTS = m.pertemuanKe === 8;
                 const isUAS = m.pertemuanKe === 16;
@@ -953,10 +995,10 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
                         Evaluasi Resmi: {activeMeeting.examType}
                       </span>
                     )}
-                    {activeMeeting.tanggal && (
+                    {activeMeeting.tanggal && safeFormatDate(activeMeeting.tanggal, { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' }) && (
                       <span className="text-xs text-slate-500 font-medium flex items-center gap-1">
                         <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                        <span>{new Date(activeMeeting.tanggal).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                        <span>{safeFormatDate(activeMeeting.tanggal, { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' })}</span>
                       </span>
                     )}
                   </div>
@@ -1119,10 +1161,10 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
                 )}
 
                 {/* Info Tanggal Pelaksanaan RPS */}
-                {activeMeeting.tanggal && (
+                {activeMeeting.tanggal && safeFormatDate(activeMeeting.tanggal, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) && (
                   <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium pt-2 border-t border-slate-100">
                     <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Jadwal Pelaksanaan: <strong>{new Date(activeMeeting.tanggal).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</strong></span>
+                    <span>Jadwal Pelaksanaan: <strong>{safeFormatDate(activeMeeting.tanggal, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</strong></span>
                   </div>
                 )}
               </div>
@@ -1367,10 +1409,10 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
                           {activeMeeting.taskDesc}
                         </div>
                       )}
-                      {activeMeeting.taskDeadline && (
+                      {activeMeeting.taskDeadline && safeFormatDate(activeMeeting.taskDeadline, { weekday: 'long', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) && (
                         <div className="text-[11px] text-purple-800 font-semibold mt-2 pt-2 border-t border-purple-200/80 flex items-center gap-1">
                           <Clock className="w-3.5 h-3.5 text-purple-600" />
-                          <span>Batas Akhir: {new Date(activeMeeting.taskDeadline).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                          <span>Batas Akhir: {safeFormatDate(activeMeeting.taskDeadline, { weekday: 'long', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
                         </div>
                       )}
                     </div>
@@ -1460,7 +1502,7 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
 
                           {mySubmission.submittedAt && (
                             <div className="text-[10px] text-slate-400">
-                              Disematkan pada: {new Date(mySubmission.submittedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                              Disematkan pada: {safeFormatDate(mySubmission.submittedAt, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                             </div>
                           )}
 
@@ -1569,7 +1611,7 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
                                 <div className="text-[10px] text-slate-500">NIM: {sub.nim || '-'}</div>
                                 {sub.submittedAt && (
                                   <div className="text-[10px] text-slate-400">
-                                    {new Date(sub.submittedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                    {safeFormatDate(sub.submittedAt, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                                   </div>
                                 )}
                                 {sub.catatan && (
@@ -1777,9 +1819,9 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
                         </span>
                         <div className="flex items-center gap-1.5 ml-auto">
                           <span className={`text-[10px] ${isMyMessage ? 'text-brand-200' : 'text-slate-400'}`}>
-                            {new Date(msg.createdAt).toLocaleDateString('id-ID', {
+                            {safeFormatDate(msg.createdAt, {
                               day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
-                            })}
+                            }) || '—'}
                             {msg.isEdited && !msg.isDeleted && (
                               <span className="ml-1 italic opacity-70"> · Diedit</span>
                             )}

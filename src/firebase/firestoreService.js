@@ -19,7 +19,7 @@ import {
   serverTimestamp 
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { db, storage, isRealFirebaseConfigured } from "./config";
+import { db, storage, isRealFirebaseConfigured } from "./config.js";
 import { 
   INITIAL_FAKULTAS, 
   INITIAL_PRODI, 
@@ -29,9 +29,10 @@ import {
   INITIAL_CLASSES, 
   INITIAL_AUDIT_LOGS,
   generateDefault16Meetings 
-} from "../utils/seedData";
-import { calculateFinalGrade } from "../utils/gradeCalculator";
-import { calculateAcademicStanding } from "../utils/studentNimHelper";
+} from "../utils/seedData.js";
+export { generateDefault16Meetings };
+import { calculateFinalGrade } from "../utils/gradeCalculator.js";
+import { calculateAcademicStanding } from "../utils/studentNimHelper.js";
 
 // Key Penyimpanan LocalStorage untuk mode Demo / Cepat
 export const STORAGE_KEYS = {
@@ -91,71 +92,26 @@ export function isUserDeleted(user, deletedList) {
   const email = user.email ? String(user.email).toLowerCase().trim() : '';
   const username = user.username ? String(user.username).toLowerCase().trim() : '';
   const nim = user.nim ? String(user.nim).trim() : '';
-  const role = (user.role || '').toUpperCase();
+  const nidn = user.nidn ? String(user.nidn).trim() : '';
 
-  // Akun inti institusi (Super Admin, BAA, Dosen resmi, dan Mahasiswa mandiri resmi) DILINDUNGI MUTLAK dari penghapusan
-  const officialProtectedEmails = [
+  // Hanya akun sistem inti yang dilindungi mutlak (Super Admin & BAA resmi sistem)
+  const coreSystemEmails = [
     'admin@stienas.ac.id',
     'superadmin@stienas.ac.id',
     'akademik@stienas.ac.id',
     'adminakademik@stienas.ac.id',
-    'mohdaribjm@gmail.com',
-    'arief@stienas-ypb.ac.id',
-    'waket1@stienas-ypb.ac.id',
-    'mailiana.01@gmail.com',
-    'rakhmiridhawati51@gmail.com',
-    'nadiayuni16@gmail.com',
-    'dellapuspita2436@gmail.com',
-    'muhammadarifzairullah@gmail.com',
-    'ayung006@gmail.com',
-    'raby79279@gmail.com',
-    'siti@gmail.com'
   ];
 
-  const officialProtectedUids = [
+  const coreSystemUids = [
     'user-admin-1',
     'user-admin-2',
-    'user-dosen-1',
-    'user-dosen-1789698585944',
-    'user-dosen-1789742932417',
-    'user-dosen-1789782310180',
-    'user-dosen-2',
-    'user-mhs-1789798197871',
-    'user-mhs-1789800818486',
-    'user-mhs-1789801049377',
-    'user-mhs-1789801227932',
-    'user-mhs-1789806444944',
-    'user-mhs-1789909513563'
-  ];
-
-  const officialProtectedNims = [
-    '251011152',
-    '20251111631',
-    '20251111611',
-    '20251111600',
-    '20251111644',
-    '262011547'
   ];
 
   if (
-    role === 'SUPER_ADMIN' || 
-    role === 'ADMIN_AKADEMIK' || 
-    officialProtectedUids.includes(uid) ||
-    officialProtectedUids.includes(id) ||
-    officialProtectedEmails.includes(email) ||
-    officialProtectedNims.includes(nim) ||
+    (coreSystemUids.includes(uid) || coreSystemUids.includes(id)) ||
+    coreSystemEmails.includes(email) ||
     username === 'admin' ||
-    username === 'akademik' ||
-    username === 'dosen' ||
-    username === 'arief' ||
-    username === 'waket1' ||
-    username === 'mailiana.01' ||
-    username === 'raby79279' ||
-    username === 'ayung006' ||
-    username === 'nadiayuni16' ||
-    username === 'dellapuspita2436' ||
-    username === 'muhammadarifzairullah' ||
-    username === 'siti'
+    username === 'akademik'
   ) {
     return false;
   }
@@ -198,9 +154,11 @@ export function saveMeetingConfig(classId, meetingNumber, config) {
 export async function getLocal(key, initial = []) {
   let localItems = null;
   try {
-    const raw = localStorage.getItem(key);
-    if (raw) {
-      localItems = JSON.parse(raw);
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        localItems = JSON.parse(raw);
+      }
     }
   } catch (e) {
     console.warn("Storage read error:", e);
@@ -308,18 +266,31 @@ export async function getLocal(key, initial = []) {
             const meetingConfigs = getMeetingConfigs();
             finalItems = finalItems.map(cls => {
               const clsId = String(cls.uid || cls.id || '');
+              let rawMeetings = Array.isArray(cls.meetings) && cls.meetings.length > 0 
+                ? cls.meetings 
+                : generateDefault16Meetings(cls.namaMk || 'Mata Kuliah');
+
+              // Pastikan seluruh 16 pertemuan lengkap
+              if (rawMeetings.length < 16) {
+                const defaults = generateDefault16Meetings(cls.namaMk || 'Mata Kuliah');
+                rawMeetings = defaults.map(defM => {
+                  const existingM = rawMeetings.find(rm => Number(rm.pertemuanKe) === Number(defM.pertemuanKe));
+                  return { ...defM, ...(existingM || {}) };
+                });
+              }
+
               return {
                 ...cls,
-                meetings: (cls.meetings || []).map(m => {
+                namaTa: cls.namaTa || '2026/2027 Ganjil',
+                tahunAkademikId: cls.tahunAkademikId || 'ta-20261',
+                status: cls.status || 'OPEN',
+                enrolledStudents: Array.isArray(cls.enrolledStudents) ? cls.enrolledStudents : [],
+                meetings: rawMeetings.map(m => {
                   const mNum = Number(m.pertemuanKe);
                   const cfg = meetingConfigs[`${clsId}_${mNum}`] || meetingConfigs[`${cls.id}_${mNum}`] || {};
                   
-                  // Default task status: jika pertemuan memiliki tugas, default terbuka kecuali secara eksplisit ditutup oleh dosen
+                  // Default task status: terbuka kecuali secara eksplisit ditutup oleh dosen
                   let isTaskOpen = m.isTaskOpen !== undefined ? Boolean(m.isTaskOpen) : true;
-                  // Perbaiki state 'kelas-akt-101-a' yang pernah tersimpan false akibat artefak testing lama di cloud
-                  if (clsId === 'kelas-akt-101-a' && mNum === 1 && cfg.isTaskOpen === undefined) {
-                    isTaskOpen = true;
-                  }
                   if (cfg.isTaskOpen !== undefined) {
                     isTaskOpen = Boolean(cfg.isTaskOpen);
                   }
@@ -351,7 +322,9 @@ export async function getLocal(key, initial = []) {
             }
           }
 
-          localStorage.setItem(key, JSON.stringify(finalItems));
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(key, JSON.stringify(finalItems));
+          }
           fbLoaded = true;
           return finalItems;
         }
@@ -410,15 +383,28 @@ export async function getLocal(key, initial = []) {
       const meetingConfigs = getMeetingConfigs();
       localItems = localItems.map(cls => {
         const clsId = String(cls.uid || cls.id || '');
+        let rawMeetings = Array.isArray(cls.meetings) && cls.meetings.length > 0 
+          ? cls.meetings 
+          : generateDefault16Meetings(cls.namaMk || 'Mata Kuliah');
+
+        if (rawMeetings.length < 16) {
+          const defaults = generateDefault16Meetings(cls.namaMk || 'Mata Kuliah');
+          rawMeetings = defaults.map(defM => {
+            const existingM = rawMeetings.find(rm => Number(rm.pertemuanKe) === Number(defM.pertemuanKe));
+            return { ...defM, ...(existingM || {}) };
+          });
+        }
+
         return {
           ...cls,
-          meetings: (cls.meetings || []).map(m => {
+          namaTa: cls.namaTa || '2026/2027 Ganjil',
+          tahunAkademikId: cls.tahunAkademikId || 'ta-20261',
+          status: cls.status || 'OPEN',
+          enrolledStudents: Array.isArray(cls.enrolledStudents) ? cls.enrolledStudents : [],
+          meetings: rawMeetings.map(m => {
             const mNum = Number(m.pertemuanKe);
             const cfg = meetingConfigs[`${clsId}_${mNum}`] || meetingConfigs[`${cls.id}_${mNum}`] || {};
             let isTaskOpen = m.isTaskOpen !== undefined ? Boolean(m.isTaskOpen) : true;
-            if (clsId === 'kelas-akt-101-a' && mNum === 1 && cfg.isTaskOpen === undefined) {
-              isTaskOpen = true;
-            }
             if (cfg.isTaskOpen !== undefined) {
               isTaskOpen = Boolean(cfg.isTaskOpen);
             }
@@ -449,45 +435,18 @@ export async function getLocal(key, initial = []) {
 
 export async function setLocal(key, value) {
   try {
-    localStorage.setItem(key, JSON.stringify(value));
-    notifyDataChange(key, value);
-    
-    if (isRealFirebaseConfigured() && db) {
-      const colName = getCollectionName(key);
-      if (colName && Array.isArray(value)) {
-        // Eksekusi sinkronisasi batch cloud di latar belakang tanpa memblokir thread client/UI
-        (async () => {
-          try {
-            const batch = writeBatch(db);
-            let count = 0;
-            
-            value.forEach(item => {
-              const id = item.uid || item.id;
-              if (id) {
-                const cleanItem = JSON.parse(JSON.stringify(item));
-                batch.set(doc(db, colName, String(id)), cleanItem, { merge: true });
-                count++;
-              }
-            });
-            
-            if (count > 0 && count <= 500) {
-               await batch.commit();
-            } else if (count > 500) {
-               console.warn("Batch size exceeds 500, skipping sync.");
-            }
-          } catch (batchErr) {
-            console.warn("Firestore setLocal batch sync warning:", batchErr);
-          }
-        })();
-      }
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(key, JSON.stringify(value));
     }
+    notifyDataChange(key, value);
   } catch (e) {
     console.warn("Storage write error:", e);
   }
 }
 
-// Inisialisasi awal localStorage
+// Inisialisasi awal localStorage (khusus lingkungan browser)
 export async function initializeLocalStore() {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return;
   await getLocal(STORAGE_KEYS.FAKULTAS, INITIAL_FAKULTAS);
   await getLocal(STORAGE_KEYS.PRODI, INITIAL_PRODI);
   
@@ -592,8 +551,10 @@ export async function initializeLocalStore() {
   });
 
   let usersChanged = sanitizedUsers.length !== currentUsers.length;
-  // Pastikan seluruh akun inti (Super Admin, BAA, Dosen resmi, Mahasiswa mandiri resmi) selalu ada dan aktif
-  INITIAL_USERS.forEach(coreUser => {
+  // Pastikan akun staf inti (Super Admin, BAA, Dosen resmi) selalu ada
+  // CATATAN: Akun mahasiswa TIDAK di-inject ulang agar tidak memblokir pendaftaran mahasiswa baru
+  const coreStaffRoles = ['SUPER_ADMIN', 'ADMIN', 'ADMIN_AKADEMIK', 'AKADEMIK', 'BAA', 'DOSEN'];
+  INITIAL_USERS.filter(u => coreStaffRoles.includes((u.role || '').toUpperCase())).forEach(coreUser => {
     const exists = sanitizedUsers.some(u => 
       (u.uid && (u.uid === coreUser.uid || u.id === coreUser.uid)) ||
       (u.email && u.email.toLowerCase().trim() === coreUser.email.toLowerCase().trim()) ||
@@ -712,7 +673,9 @@ export async function initializeLocalStore() {
 
   await getLocal(STORAGE_KEYS.LOGS, INITIAL_AUDIT_LOGS);
 }
-initializeLocalStore().catch(console.error);
+if (typeof window !== 'undefined') {
+  initializeLocalStore().catch(console.error);
+}
 
 /* =========================================================================
    1. AUDIT LOGS (FR-08.2)
@@ -1232,12 +1195,11 @@ export async function deleteUser(targetUserOrUid, currentUser) {
     throw new Error("Anda tidak dapat menghapus akun Anda sendiri.");
   }
 
-  // Proteksi integritas: Akun utama Administrator dan BAA tidak dapat dihapus
-  if (targetUid === 'user-admin-1' || targetEmail === 'admin@stienas.ac.id' || effectiveTarget.role === 'SUPER_ADMIN') {
-    throw new Error("Akun Super Administrator sistem tidak dapat dihapus demi integritas LMS.");
-  }
-  if (targetUid === 'user-admin-2' || targetEmail === 'akademik@stienas.ac.id') {
-    throw new Error("Akun Bagian Akademik (BAA) utama sistem tidak dapat dihapus.");
+  // Proteksi integritas: Hanya akun sistem inti yang tidak dapat dihapus
+  const coreProtectedUids = ['user-admin-1', 'user-admin-2'];
+  const coreProtectedEmails = ['admin@stienas.ac.id', 'superadmin@stienas.ac.id', 'akademik@stienas.ac.id', 'adminakademik@stienas.ac.id'];
+  if (coreProtectedUids.includes(targetUid) || coreProtectedEmails.includes(targetEmail)) {
+    throw new Error("Akun sistem inti tidak dapat dihapus demi integritas LMS.");
   }
 
   const currentRole = (activeUser?.role || '').toUpperCase();
@@ -1373,31 +1335,30 @@ export async function registerStudent(studentData) {
     throw new Error("Alamat email tidak valid. Pastikan format email benar (contoh: nama@gmail.com).");
   }
 
-  // 1. Ambil daftar pengguna dari penyimpanan lokal (cepat & offline-first)
+  // 1. Ambil daftar pengguna terbaru dari database Firestore & lokal secara akurat
   let list = [];
   try {
+    list = await getUsers();
+  } catch (e) {
     const raw = localStorage.getItem(STORAGE_KEYS.USERS);
-    if (raw) list = JSON.parse(raw);
-  } catch (e) {}
-
-  if (!Array.isArray(list) || list.length === 0) {
-    try {
-      list = await getUsers();
-    } catch (e) {
-      list = [...INITIAL_USERS];
-    }
+    list = raw ? JSON.parse(raw) : [...INITIAL_USERS];
   }
 
   // 2. Cek apakah email sudah terdaftar sebelumnya
-  const existingIdx = list.findIndex(u => (u.email || '').trim().toLowerCase() === emailClean);
-  const existingUser = existingIdx >= 0 ? list[existingIdx] : null;
+  // Cari di list yang sudah terfilter (tidak termasuk akun yang sudah terhapus)
+  const existingIdx = list.findIndex(u => (u.email || '').trim().toLowerCase() === emailClean && u.isActive !== false);
+  // Fallback: cari juga di akun tidak aktif
+  const existingIdxFull = existingIdx >= 0 ? existingIdx : list.findIndex(u => (u.email || '').trim().toLowerCase() === emailClean);
+  const existingUser = existingIdxFull >= 0 ? list[existingIdxFull] : null;
 
   // Jika akun yang terdaftar merupakan akun staf/dosen, jangan izinkan ditimpa pendaftaran mahasiswa
   if (existingUser) {
     const exRole = (existingUser.role || '').toUpperCase();
     if (exRole === 'SUPER_ADMIN' || exRole === 'ADMIN' || exRole === 'ADMIN_AKADEMIK' || exRole === 'BAA' || exRole === 'DOSEN') {
-      throw new Error(`Email '${studentData.email}' merupakan akun dinas LMS STIE Nasional (${exRole}). Silakan gunakan halaman Masuk/Login.`);
+      throw new Error(`Email '${studentData.email}' sudah digunakan untuk akun dinas LMS STIE Nasional (${exRole}). Silakan gunakan halaman Masuk/Login dengan email tersebut.`);
     }
+    // Jika akun mahasiswa sudah ada, lakukan UPDATE (bukan error)
+    // Ini memungkinkan mahasiswa yang pernah terdaftar untuk memperbarui data
   }
 
   // 3. Tentukan NIM yang valid dan bebas benturan (unique)
@@ -1462,8 +1423,9 @@ export async function registerStudent(studentData) {
   } catch (e) {}
 
   // 5. Perbarui list pengguna
-  if (existingIdx >= 0) {
-    list[existingIdx] = studentObj;
+  const finalUpdateIdx = existingIdxFull >= 0 ? existingIdxFull : existingIdx;
+  if (finalUpdateIdx >= 0) {
+    list[finalUpdateIdx] = studentObj;
   } else {
     list.unshift(studentObj);
   }
@@ -1471,26 +1433,24 @@ export async function registerStudent(studentData) {
   localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(list));
   notifyDataChange(STORAGE_KEYS.USERS, list);
 
-  // Otomatis sinkronisasi kelas perkuliahan paket semester untuk mahasiswa yang baru mendaftar
+  // 6. Sinkronisasi dokumen pengguna ke Firestore secara langsung
+  if (isRealFirebaseConfigured() && db && targetUid) {
+    try {
+      const cleanFbDoc = JSON.parse(JSON.stringify(studentObj));
+      await setDoc(doc(db, "users", String(targetUid)), cleanFbDoc, { merge: true });
+    } catch (e) {
+      console.warn("Direct Firestore registerStudent setDoc warning:", e);
+    }
+  }
+
+  // 7. Otomatis sinkronisasi kelas perkuliahan paket semester untuk mahasiswa yang baru mendaftar
   try {
     await syncStudentSemesterClasses(studentObj);
   } catch (e) {
     console.warn("Auto sync semester classes on registerStudent warning:", e);
   }
 
-  // 6. Sinkronisasi dokumen pengguna ke Firestore (non-blocking)
-  if (isRealFirebaseConfigured() && db && targetUid) {
-    try {
-      const cleanFbDoc = JSON.parse(JSON.stringify(studentObj));
-      setDoc(doc(db, "users", String(targetUid)), cleanFbDoc, { merge: true }).catch(err => {
-        console.warn("Direct Firestore registerStudent setDoc warning:", err);
-      });
-    } catch (e) {
-      console.warn("Firestore serialization warning:", e);
-    }
-  }
-
-  // 7. Audit log (non-blocking)
+  // 8. Audit log (non-blocking)
   logAudit(
     studentObj, 
     existingUser ? 'UPDATE_STUDENT_REGISTRATION' : 'REGISTER_STUDENT', 
@@ -1552,29 +1512,46 @@ export async function batchImportData(type, items, user) {
 
 /**
  * Helper untuk memvalidasi apakah suatu kelas perkuliahan ditugaskan kepada Dosen tertentu oleh BAA.
- * Aturan Ketat:
- * 1. Hanya Dosen Pengampu Utama kelas yang bersangkutan.
+ * Aturan:
+ * 1. Dosen Pengampu Utama kelas yang bersangkutan (pencocokan UID, NIDN, Email, Username, atau Nama fleksibel).
  * 2. ATAU Dosen yang masuk dalam Tim Pengajar / Team Teaching kelas tersebut.
- * KELAS DOSEN LAIN TIDAK BOLEH MUNCUL meskipun memiliki mata kuliah yang sama.
+ * 3. ATAU Dosen default pada Mata Kuliah kelas tersebut.
  */
-export function isClassAssignedToLecturer(cls, lecturer) {
+export function isClassAssignedToLecturer(cls, lecturer, mks = []) {
   if (!cls || !lecturer) return false;
   const lecturerUid = lecturer.uid ? String(lecturer.uid).trim() : '';
   const lecturerId = lecturer.id ? String(lecturer.id).trim() : '';
   const lecturerNidn = lecturer.nidn ? String(lecturer.nidn).trim() : '';
   const lecturerEmail = lecturer.email ? String(lecturer.email).trim().toLowerCase() : '';
+  const lecturerUsername = lecturer.username ? String(lecturer.username).trim().toLowerCase() : '';
   const lecturerName = lecturer.name ? String(lecturer.name).trim().toLowerCase() : '';
+
+  // Helper normalisasi nama: hilangkan gelar akademik dan karakter non-alfanumerik
+  const stripAcademicTitles = (str) => {
+    return (str || '')
+      .toLowerCase()
+      .replace(/\b(dr|drs|dra|h|hj|se|mm|m\.si|msi|m\.ak|mak|m\.pd|mpd|s\.pd|spd|s\.e|s\.kom|m\.kom|ph\.d|ak)\b/gi, '')
+      .replace(/[^a-z0-9]/g, '')
+      .trim();
+  };
+
+  const cleanLecturer = stripAcademicTitles(lecturerName);
 
   const matchesLecturer = (targetId, targetNidn, targetEmail, targetName) => {
     const tid = targetId ? String(targetId).trim() : '';
     const tnidn = targetNidn ? String(targetNidn).trim() : '';
     const temail = targetEmail ? String(targetEmail).trim().toLowerCase() : '';
     const tname = targetName ? String(targetName).trim().toLowerCase() : '';
+    const cleanTarget = stripAcademicTitles(tname);
 
     if (tid && (tid === lecturerUid || tid === lecturerId)) return true;
     if (lecturerNidn && (tnidn === lecturerNidn || tid === lecturerNidn)) return true;
     if (lecturerEmail && (temail === lecturerEmail || tid === lecturerEmail)) return true;
+    if (lecturerUsername && (temail.startsWith(`${lecturerUsername}@`) || tid === lecturerUsername)) return true;
+    // Pencocokan nama lebih ketat: hanya exact match atau substring panjang (min 5 karakter) untuk mencegah false-positive
     if (tname && lecturerName && tname === lecturerName) return true;
+    if (cleanLecturer && cleanLecturer.length > 5 && cleanTarget && cleanTarget.length > 5 &&
+        (cleanTarget.includes(cleanLecturer) || cleanLecturer.includes(cleanTarget))) return true;
     return false;
   };
 
@@ -1602,7 +1579,8 @@ export function isClassAssignedToLecturer(cls, lecturer) {
             s === lecturerUid || 
             s === lecturerId || 
             (lecturerNidn && s === lecturerNidn) || 
-            (lecturerEmail && s.toLowerCase() === lecturerEmail)
+            (lecturerEmail && s.toLowerCase() === lecturerEmail) ||
+            (lecturerUsername && s.toLowerCase() === lecturerUsername)
           ) {
             return true;
           }
@@ -1615,16 +1593,49 @@ export function isClassAssignedToLecturer(cls, lecturer) {
     }
   }
 
+  // 3. Cocokkan dari Mata Kuliah default jika parameter mks disertakan
+  if (Array.isArray(mks) && mks.length > 0) {
+    const mk = mks.find(m => String(m.id) === String(cls.mataKuliahId) || m.kodeMk === cls.kodeMk);
+    if (mk && matchesLecturer(mk.dosenId, mk.dosenNidn, mk.dosenEmail, mk.dosenNama || mk.namaDosen)) {
+      return true;
+    }
+  }
+
   return false;
 }
 
+export async function syncClassMeetingsToFirestore(classItem) {
+  if (isRealFirebaseConfigured() && db && classItem) {
+    try {
+      const docId = String(classItem.uid || classItem.id || '');
+      if (docId) {
+        await setDoc(doc(db, "kelas_kuliah", docId), {
+          meetings: classItem.meetings,
+          enrolledStudents: Array.isArray(classItem.enrolledStudents) ? classItem.enrolledStudents : []
+        }, { merge: true });
+      }
+    } catch (fsErr) {
+      console.warn("Firestore syncClassMeetings warning:", fsErr);
+    }
+  }
+}
+
 export async function getClasses() {
-  return await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
+  const classes = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
+  return (classes || []).map(cls => {
+    if (!Array.isArray(cls.meetings) || cls.meetings.length === 0) {
+      cls.meetings = generateDefault16Meetings(cls.namaMk || 'Mata Kuliah');
+    }
+    return cls;
+  });
 }
 
 export async function getClassById(classId) {
-  const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
+  const list = await getClasses();
   const classItem = list.find(c => String(c.id) === String(classId) || String(c.uid || '') === String(classId)) || null;
+  if (classItem && (!Array.isArray(classItem.meetings) || classItem.meetings.length === 0)) {
+    classItem.meetings = generateDefault16Meetings(classItem.namaMk || 'Mata Kuliah');
+  }
   return classItem;
 }
 
@@ -1880,7 +1891,10 @@ export async function syncStudentSemesterClasses(userOrUid, options = {}) {
 
   const updatedClasses = classesList.map(cls => {
     // Pastikan kelas berada pada semester aktif
-    const isTaMatch = cls.tahunAkademikId === activeTa.id || cls.namaTa === activeTa.namaTa;
+    // Kelas tanpa tahunAkademikId dianggap aktif (toleran terhadap data lama)
+    const isTaMatch = !cls.tahunAkademikId || 
+                      cls.tahunAkademikId === activeTa.id || 
+                      cls.namaTa === activeTa.namaTa;
     if (!isTaMatch || cls.status === 'CLOSED') return cls;
 
     const mk = mks.find(m => String(m.id) === String(cls.mataKuliahId) || m.kodeMk === cls.kodeMk);
@@ -1905,6 +1919,21 @@ export async function syncStudentSemesterClasses(userOrUid, options = {}) {
 
   if (newlyEnrolledCount > 0) {
     await setLocal(STORAGE_KEYS.CLASSES, updatedClasses);
+    // Push update ke Firestore secara langsung
+    if (isRealFirebaseConfigured() && db) {
+      for (const enc of enrolledClasses) {
+        try {
+          const docId = String(enc.uid || enc.id);
+          if (docId) {
+            await setDoc(doc(db, "kelas_kuliah", docId), {
+              enrolledStudents: enc.enrolledStudents || []
+            }, { merge: true });
+          }
+        } catch (e) {
+          console.warn("Sync class to Firestore error:", e);
+        }
+      }
+    }
   }
 
   return {
@@ -1953,7 +1982,10 @@ export async function syncClassesAndStudentsBySemester(user) {
   let totalSyncCount = 0;
   let classChanges = false;
   const updatedClasses = classesList.map(cls => {
-    const isTaMatch = cls.tahunAkademikId === activeTa.id || cls.namaTa === activeTa.namaTa;
+    // Kelas tanpa tahunAkademikId dianggap aktif (toleran terhadap data lama)
+    const isTaMatch = !cls.tahunAkademikId || 
+                      cls.tahunAkademikId === activeTa.id || 
+                      cls.namaTa === activeTa.namaTa;
     const mk = mks.find(m => String(m.id) === String(cls.mataKuliahId) || m.kodeMk === cls.kodeMk);
     const courseSemester = Number(cls.semester || mk?.semesterDefault || 1);
 
@@ -1964,6 +1996,11 @@ export async function syncClassesAndStudentsBySemester(user) {
     if (!cls.tahunAkademikId) {
       cls.tahunAkademikId = activeTa.id;
       cls.namaTa = activeTa.namaTa;
+      classChanges = true;
+    }
+
+    if (!Array.isArray(cls.meetings) || cls.meetings.length === 0) {
+      cls.meetings = generateDefault16Meetings(cls.namaMk || 'Mata Kuliah');
       classChanges = true;
     }
 
@@ -1995,6 +2032,25 @@ export async function syncClassesAndStudentsBySemester(user) {
 
   if (totalSyncCount > 0 || classChanges) {
     await setLocal(STORAGE_KEYS.CLASSES, updatedClasses);
+    // Push update ke koleksi Firestore kelas_kuliah
+    if (isRealFirebaseConfigured() && db) {
+      for (const cls of updatedClasses) {
+        try {
+          const docId = String(cls.uid || cls.id);
+          if (docId) {
+            await setDoc(doc(db, "kelas_kuliah", docId), {
+              enrolledStudents: cls.enrolledStudents || [],
+              semester: cls.semester,
+              tahunAkademikId: cls.tahunAkademikId,
+              namaTa: cls.namaTa,
+              meetings: cls.meetings
+            }, { merge: true });
+          }
+        } catch (e) {
+          console.warn("Sync mass class to Firestore error:", e);
+        }
+      }
+    }
   }
 
   if (user) {
@@ -2016,6 +2072,10 @@ export async function updateMeeting(classId, meetingNumber, updateFields, user) 
   const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
   const classItem = list.find(c => String(c.id) === String(classId) || String(c.uid || '') === String(classId));
   if (!classItem) throw new Error("Kelas tidak ditemukan");
+
+  if (!Array.isArray(classItem.meetings) || classItem.meetings.length === 0) {
+    classItem.meetings = generateDefault16Meetings(classItem.namaMk || 'Mata Kuliah');
+  }
 
   const meetingIndex = classItem.meetings.findIndex(m => m.pertemuanKe === Number(meetingNumber));
   if (meetingIndex === -1) throw new Error("Pertemuan tidak ditemukan");
@@ -2066,19 +2126,8 @@ export async function updateMeeting(classId, meetingNumber, updateFields, user) 
   // Simpan data kelas secara terintegrasi ke localStorage
   await setLocal(STORAGE_KEYS.CLASSES, list);
 
-  // Sinkronisasi field meetings ke Firestore jika terhubung
-  if (isRealFirebaseConfigured() && db) {
-    try {
-      const docId = String(classItem.uid || classItem.id || classId);
-      await updateDoc(doc(db, "kelas_kuliah", docId), {
-        meetings: classItem.meetings
-      }).catch(async () => {
-        await setDoc(doc(db, "kelas_kuliah", docId), { meetings: classItem.meetings }, { merge: true });
-      });
-    } catch (fsErr) {
-      console.warn("Firestore updateMeeting sync warning:", fsErr);
-    }
-  }
+  // Sinkronisasi field meetings ke Firestore
+  await syncClassMeetingsToFirestore(classItem);
 
   await logAudit(user, 'UPDATE_MEETING', `Memperbarui Pertemuan ${meetingNumber} kelas ${classItem.namaMk}`);
   return classItem.meetings[meetingIndex];
@@ -2089,8 +2138,12 @@ export async function updateMeeting(classId, meetingNumber, updateFields, user) 
    ========================================================================= */
 export async function addMeetingMaterial(classId, meetingNumber, materialData, user) {
   const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
-  const classItem = list.find(c => c.id === classId);
+  const classItem = list.find(c => String(c.id) === String(classId) || String(c.uid || '') === String(classId));
   if (!classItem) throw new Error("Kelas tidak ditemukan");
+
+  if (!Array.isArray(classItem.meetings) || classItem.meetings.length === 0) {
+    classItem.meetings = generateDefault16Meetings(classItem.namaMk || 'Mata Kuliah');
+  }
 
   const meeting = classItem.meetings.find(m => m.pertemuanKe === Number(meetingNumber));
   if (!meeting) throw new Error("Pertemuan tidak ditemukan");
@@ -2104,14 +2157,19 @@ export async function addMeetingMaterial(classId, meetingNumber, materialData, u
   meeting.materials.push(newMaterial);
 
   await setLocal(STORAGE_KEYS.CLASSES, list);
+  await syncClassMeetingsToFirestore(classItem);
   await logAudit(user, 'UPLOAD_MATERIAL', `Sematkan materi "${newMaterial.judul}" pada Pertemuan ${meetingNumber} kelas ${classItem.namaMk}`);
   return newMaterial;
 }
 
 export async function deleteMeetingMaterial(classId, meetingNumber, materialId, user) {
   const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
-  const classItem = list.find(c => c.id === classId);
+  const classItem = list.find(c => String(c.id) === String(classId) || String(c.uid || '') === String(classId));
   if (!classItem) throw new Error("Kelas tidak ditemukan");
+
+  if (!Array.isArray(classItem.meetings) || classItem.meetings.length === 0) {
+    classItem.meetings = generateDefault16Meetings(classItem.namaMk || 'Mata Kuliah');
+  }
 
   const meeting = classItem.meetings.find(m => m.pertemuanKe === Number(meetingNumber));
   if (!meeting) throw new Error("Pertemuan tidak ditemukan");
@@ -2119,6 +2177,7 @@ export async function deleteMeetingMaterial(classId, meetingNumber, materialId, 
   meeting.materials = (meeting.materials || []).filter(m => m.id !== materialId);
 
   await setLocal(STORAGE_KEYS.CLASSES, list);
+  await syncClassMeetingsToFirestore(classItem);
   await logAudit(user, 'DELETE_MATERIAL', `Menghapus materi ID ${materialId} pada Pertemuan ${meetingNumber} kelas ${classItem.namaMk}`);
   return true;
 }
@@ -2128,14 +2187,19 @@ export async function deleteMeetingMaterial(classId, meetingNumber, materialId, 
    ========================================================================= */
 export async function saveMeetingAttendance(classId, meetingNumber, attendances, user) {
   const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
-  const classItem = list.find(c => c.id === classId);
+  const classItem = list.find(c => String(c.id) === String(classId) || String(c.uid || '') === String(classId));
   if (!classItem) throw new Error("Kelas tidak ditemukan");
+
+  if (!Array.isArray(classItem.meetings) || classItem.meetings.length === 0) {
+    classItem.meetings = generateDefault16Meetings(classItem.namaMk || 'Mata Kuliah');
+  }
 
   const meeting = classItem.meetings.find(m => m.pertemuanKe === Number(meetingNumber));
   if (!meeting) throw new Error("Pertemuan tidak ditemukan");
 
   meeting.attendances = attendances;
   await setLocal(STORAGE_KEYS.CLASSES, list);
+  await syncClassMeetingsToFirestore(classItem);
   await logAudit(user, 'INPUT_ATTENDANCE', `Input presensi pertemuan ${meetingNumber} kelas ${classItem.namaMk}`);
   return attendances;
 }
@@ -2147,6 +2211,10 @@ export async function submitAssignment(classId, meetingNumber, submissionData, u
   const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
   const classItem = list.find(c => String(c.id) === String(classId) || String(c.uid || '') === String(classId));
   if (!classItem) throw new Error("Kelas tidak ditemukan");
+
+  if (!Array.isArray(classItem.meetings) || classItem.meetings.length === 0) {
+    classItem.meetings = generateDefault16Meetings(classItem.namaMk || 'Mata Kuliah');
+  }
 
   const meeting = classItem.meetings.find(m => m.pertemuanKe === Number(meetingNumber));
   if (!meeting) throw new Error("Pertemuan tidak ditemukan");
@@ -2182,6 +2250,7 @@ export async function submitAssignment(classId, meetingNumber, submissionData, u
   };
 
   await setLocal(STORAGE_KEYS.CLASSES, list);
+  await syncClassMeetingsToFirestore(classItem);
   const auditSuffix = isLate ? ' (Status: TERLAMBAT)' : '';
   await logAudit(user, 'SUBMIT_TASK', `Mahasiswa ${user.name || user.email} mengumpulkan tugas Pertemuan ${meetingNumber}${auditSuffix}`);
   return meeting.submissions[uid];
@@ -2191,6 +2260,10 @@ export async function gradeSubmission(classId, meetingNumber, mhsId, nilai, feed
   const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
   const classItem = list.find(c => String(c.id) === String(classId) || String(c.uid || '') === String(classId));
   if (!classItem) throw new Error("Kelas tidak ditemukan");
+
+  if (!Array.isArray(classItem.meetings) || classItem.meetings.length === 0) {
+    classItem.meetings = generateDefault16Meetings(classItem.namaMk || 'Mata Kuliah');
+  }
 
   const meeting = classItem.meetings.find(m => m.pertemuanKe === Number(meetingNumber));
   if (!meeting || !meeting.submissions || !meeting.submissions[mhsId]) {
@@ -2202,6 +2275,7 @@ export async function gradeSubmission(classId, meetingNumber, mhsId, nilai, feed
   meeting.submissions[mhsId].gradedAt = new Date().toISOString();
 
   await setLocal(STORAGE_KEYS.CLASSES, list);
+  await syncClassMeetingsToFirestore(classItem);
   await logAudit(user, 'GRADE_TASK', `Memberikan nilai ${nilai} untuk tugas mahasiswa ${mhsId} pertemuan ${meetingNumber}`);
   return meeting.submissions[mhsId];
 }
@@ -2291,8 +2365,12 @@ export async function calculateLecturersActivityScores() {
    ========================================================================= */
 export async function updateMeetingMedia(classId, meetingNumber, mediaData, user) {
   const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
-  const classItem = list.find(c => c.id === classId);
+  const classItem = list.find(c => String(c.id) === String(classId) || String(c.uid || '') === String(classId));
   if (!classItem) throw new Error("Kelas tidak ditemukan");
+
+  if (!Array.isArray(classItem.meetings) || classItem.meetings.length === 0) {
+    classItem.meetings = generateDefault16Meetings(classItem.namaMk || 'Mata Kuliah');
+  }
 
   const meeting = classItem.meetings.find(m => m.pertemuanKe === Number(meetingNumber));
   if (!meeting) throw new Error("Pertemuan tidak ditemukan");
@@ -2304,6 +2382,7 @@ export async function updateMeetingMedia(classId, meetingNumber, mediaData, user
   meeting.mediaTitle = mediaData.mediaTitle || '';
 
   await setLocal(STORAGE_KEYS.CLASSES, list);
+  await syncClassMeetingsToFirestore(classItem);
   await logAudit(user, 'UPDATE_MEDIA', `Mengatur tautan media daring (${mediaData.videoType}) pada Pertemuan ${meetingNumber} kelas ${classItem.namaMk}`);
   return meeting;
 }

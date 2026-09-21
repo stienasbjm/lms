@@ -119,6 +119,23 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
           dosenId: m[0].dosenId || dosens[0]?.uid || ''
         }));
       }
+
+      // Auto-sync kelas untuk mahasiswa jika belum terdaftar pada kelas semester aktifnya
+      if (isMahasiswa && user && c && c.length > 0) {
+        const uId = user.uid || user.id;
+        const enrolledCount = c.filter(cls => (cls.enrolledStudents || []).includes(uId)).length;
+        if (enrolledCount === 0) {
+          try {
+            const syncRes = await syncStudentSemesterClasses(user);
+            if (syncRes && syncRes.classesAdded > 0) {
+              const freshClasses = await getClasses();
+              setClasses(freshClasses);
+            }
+          } catch (syncErr) {
+            console.warn("Auto-sync kelas mahasiswa notice:", syncErr);
+          }
+        }
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -387,7 +404,7 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
 
     // 2. KETENTUAN KHUSUS DOSEN: HANYA TAMPILKAN KELAS YANG DIDAFTARKAN/DITUGASKAN OLEH BAA
     if (isDosen) {
-      if (!isClassAssignedToLecturer(cls, user)) return false;
+      if (!isClassAssignedToLecturer(cls, user, mks)) return false;
     }
 
     // 3. Sub-filter Mahasiswa (OBE KRS Rule)
@@ -398,7 +415,7 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
         const isProdiMatch = !mk?.prodiId || !user?.prodiId || mk.prodiId === user.prodiId;
         if (sem !== studentCurrentSemester || !isProdiMatch) return false;
       } else if (filterMhsScope === 'ENROLLED') {
-        const isEnrolled = (cls.enrolledStudents || []).includes(user?.uid);
+        const isEnrolled = (cls.enrolledStudents || []).includes(user?.uid) || (cls.enrolledStudents || []).includes(user?.id);
         if (!isEnrolled) return false;
       }
     }
@@ -410,8 +427,8 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
   const totalClassesInSemester = classes.filter(c => 
     selectedSemesterId === 'ALL' || c.tahunAkademikId === selectedSemesterId || c.namaTa === selectedTa?.namaTa
   );
-  const myDosenClassesCount = totalClassesInSemester.filter(c => isClassAssignedToLecturer(c, user)).length;
-  const myEnrolledClassesCount = totalClassesInSemester.filter(c => (c.enrolledStudents || []).includes(user?.uid)).length;
+  const myDosenClassesCount = totalClassesInSemester.filter(c => isClassAssignedToLecturer(c, user, mks)).length;
+  const myEnrolledClassesCount = totalClassesInSemester.filter(c => (c.enrolledStudents || []).includes(user?.uid) || (c.enrolledStudents || []).includes(user?.id)).length;
   const mySemesterClassesCount = totalClassesInSemester.filter(c => {
     const mk = mks.find(m => m.id === c.mataKuliahId || m.kodeMk === c.kodeMk);
     const sem = Number(mk?.semesterDefault || 1);
@@ -681,9 +698,9 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {filteredClasses.map(cls => {
-            const isEnrolled = (cls.enrolledStudents || []).includes(user?.uid);
+            const isEnrolled = (cls.enrolledStudents || []).includes(user?.uid) || (cls.enrolledStudents || []).includes(user?.id);
             const isFull = (cls.enrolledStudents || []).length >= (cls.kuota || 40);
-            const isLecturer = isDosen && isClassAssignedToLecturer(cls, user);
+            const isLecturer = isDosen && isClassAssignedToLecturer(cls, user, mks);
             const classTa = tas.find(t => t.id === cls.tahunAkademikId || t.namaTa === cls.namaTa);
             const isClassSemesterActive = classTa ? classTa.isActive : false;
 
@@ -796,8 +813,8 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
                         <span className="font-semibold">Team Teaching:</span> {
                           cls.teamTeaching.map(tUid => {
                             const d = dosenList.find(usr => (usr.uid || usr.id) === (tUid?.uid || tUid));
-                            return d ? d.name : (tUid?.name || tUid);
-                          }).join(', ')
+                            return d ? d.name : (tUid?.name || (typeof tUid === 'string' ? tUid : ''));
+                          }).filter(Boolean).join(', ')
                         }
                       </div>
                     )}
