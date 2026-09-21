@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { 
   GraduationCap, 
@@ -32,6 +32,13 @@ export default function LoginPage({ onBackToLanding, defaultAuthMode = 'LOGIN' }
   const { login, setSpecificUser, isFirebaseLive } = useAuth();
   const [authMode, setAuthMode] = useState(defaultAuthMode || 'LOGIN'); // 'LOGIN' | 'REGISTER' | 'FORGOT_PASSWORD'
 
+  // Sinkronkan mode otentikasi saat props defaultAuthMode berubah
+  useEffect(() => {
+    if (defaultAuthMode) {
+      setAuthMode(defaultAuthMode);
+    }
+  }, [defaultAuthMode]);
+
   // Login State (Clean & Kosong secara default)
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -47,6 +54,8 @@ export default function LoginPage({ onBackToLanding, defaultAuthMode = 'LOGIN' }
   const [showResetPass, setShowResetPass] = useState(false);
 
   // Register State (Khusus Mahasiswa Baru)
+  const [showRegPass, setShowRegPass] = useState(false);
+  const [showRegConfirmPass, setShowRegConfirmPass] = useState(false);
   const [regForm, setRegForm] = useState({
     name: '',
     email: '',
@@ -161,7 +170,7 @@ export default function LoginPage({ onBackToLanding, defaultAuthMode = 'LOGIN' }
 
     const cleanName = (regForm.name || '').trim();
     const cleanEmail = (regForm.email || '').trim().toLowerCase();
-    const cleanNim = (regForm.nim || '').trim().replace(/\D/g, '');
+    let cleanNim = (regForm.nim || '').trim().replace(/\D/g, '');
 
     if (!cleanName || !cleanEmail || !regForm.password) {
       const msg = "Harap lengkapi nama, email, dan kata sandi pendaftaran.";
@@ -170,11 +179,9 @@ export default function LoginPage({ onBackToLanding, defaultAuthMode = 'LOGIN' }
       return;
     }
 
+    // Jika NIM belum diisi, otomatis buatkan saran NIM resmi STIE Nasional
     if (!cleanNim) {
-      const msg = "Nomor Induk Mahasiswa (NIM) wajib diisi.";
-      setErrorMessage(msg);
-      showErrorAlert('NIM Belum Diisi', msg);
-      return;
+      cleanNim = generateSuggestedNim(regForm.angkatan, regForm.prodiId);
     }
 
     if (regForm.password.length < 6) {
@@ -581,25 +588,43 @@ export default function LoginPage({ onBackToLanding, defaultAuthMode = 'LOGIN' }
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Kata Sandi *</label>
-                  <input
-                    type="password"
-                    required
-                    placeholder="Min. 6 karakter"
-                    value={regForm.password}
-                    onChange={e => setRegForm({ ...regForm, password: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-slate-50 outline-none focus:ring-2 focus:ring-brand-500 font-mono"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showRegPass ? "text" : "password"}
+                      required
+                      placeholder="Min. 6 karakter"
+                      value={regForm.password}
+                      onChange={e => setRegForm({ ...regForm, password: e.target.value })}
+                      className="w-full px-3 py-2 pr-8 border border-slate-300 rounded-xl bg-slate-50 outline-none focus:ring-2 focus:ring-brand-500 font-mono text-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowRegPass(!showRegPass)}
+                      className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600"
+                    >
+                      {showRegPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Ulangi Sandi *</label>
-                  <input
-                    type="password"
-                    required
-                    placeholder="Sama dengan di samping"
-                    value={regForm.confirmPassword}
-                    onChange={e => setRegForm({ ...regForm, confirmPassword: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-slate-50 outline-none focus:ring-2 focus:ring-brand-500 font-mono"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showRegConfirmPass ? "text" : "password"}
+                      required
+                      placeholder="Sama persis"
+                      value={regForm.confirmPassword}
+                      onChange={e => setRegForm({ ...regForm, confirmPassword: e.target.value })}
+                      className="w-full px-3 py-2 pr-8 border border-slate-300 rounded-xl bg-slate-50 outline-none focus:ring-2 focus:ring-brand-500 font-mono text-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowRegConfirmPass(!showRegConfirmPass)}
+                      className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600"
+                    >
+                      {showRegConfirmPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
                 </div>
               </div>
 

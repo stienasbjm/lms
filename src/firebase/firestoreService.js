@@ -392,27 +392,30 @@ export async function setLocal(key, value) {
     if (isRealFirebaseConfigured() && db) {
       const colName = getCollectionName(key);
       if (colName && Array.isArray(value)) {
-        try {
-          const batch = writeBatch(db);
-          let count = 0;
-          
-          value.forEach(item => {
-            const id = item.uid || item.id;
-            if (id) {
-              const cleanItem = JSON.parse(JSON.stringify(item));
-              batch.set(doc(db, colName, String(id)), cleanItem, { merge: true });
-              count++;
+        // Eksekusi sinkronisasi batch cloud di latar belakang tanpa memblokir thread client/UI
+        (async () => {
+          try {
+            const batch = writeBatch(db);
+            let count = 0;
+            
+            value.forEach(item => {
+              const id = item.uid || item.id;
+              if (id) {
+                const cleanItem = JSON.parse(JSON.stringify(item));
+                batch.set(doc(db, colName, String(id)), cleanItem, { merge: true });
+                count++;
+              }
+            });
+            
+            if (count > 0 && count <= 500) {
+               await batch.commit();
+            } else if (count > 500) {
+               console.warn("Batch size exceeds 500, skipping sync.");
             }
-          });
-          
-          if (count > 0 && count <= 500) {
-             await batch.commit();
-          } else if (count > 500) {
-             console.warn("Batch size exceeds 500, skipping sync.");
+          } catch (batchErr) {
+            console.warn("Firestore setLocal batch sync warning:", batchErr);
           }
-        } catch (batchErr) {
-          console.warn("Firestore setLocal batch sync warning:", batchErr);
-        }
+        })();
       }
     }
   } catch (e) {
@@ -545,7 +548,7 @@ initializeLocalStore().catch(console.error);
 export async function logAudit(user, action, details) {
   const logItem = {
     id: `log-${Date.now()}`,
-    userId: user?.uid || 'anonymous',
+    userId: user?.uid || user?.id || 'anonymous',
     userName: user?.name || user?.email || 'System',
     role: user?.role || 'UNKNOWN',
     action,
@@ -553,19 +556,22 @@ export async function logAudit(user, action, details) {
     timestamp: new Date().toISOString()
   };
 
-  const logs = await getLocal(STORAGE_KEYS.LOGS, INITIAL_AUDIT_LOGS);
-  logs.unshift(logItem);
-  await setLocal(STORAGE_KEYS.LOGS, logs.slice(0, 200));
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.LOGS);
+    const logs = raw ? JSON.parse(raw) : [...INITIAL_AUDIT_LOGS];
+    logs.unshift(logItem);
+    const sliced = logs.slice(0, 200);
+    localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(sliced));
+    notifyDataChange(STORAGE_KEYS.LOGS, sliced);
 
-  if (isRealFirebaseConfigured() && db) {
-    try {
-      await addDoc(collection(db, "audit_logs"), {
+    if (isRealFirebaseConfigured() && db) {
+      addDoc(collection(db, "audit_logs"), {
         ...logItem,
         timestamp: serverTimestamp()
-      });
-    } catch (e) {
-      console.warn("Audit log to Firestore error:", e);
+      }).catch(e => console.warn("Audit log to Firestore background warning:", e));
     }
+  } catch (e) {
+    console.warn("logAudit warning:", e);
   }
 }
 
@@ -1149,71 +1155,130 @@ export async function resetUserPassword(uid, newPassword, currentUser) {
 }
 
 export async function registerStudent(studentData) {
-  const list = await getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
   const emailClean = (studentData.email || '').trim().toLowerCase();
-  const nimClean = studentData.nim ? String(studentData.nim).replace(/\D/g, '') : `261011${Math.floor(100 + Math.random() * 900)}`;
 
   if (!emailClean || !emailClean.includes('@') || !emailClean.includes('.')) {
     throw new Error("Alamat email tidak valid. Pastikan format email benar (contoh: nama@gmail.com).");
   }
 
-  const emailExists = list.some(u => (u.email || '').trim().toLowerCase() === emailClean);
-  if (emailExists) {
-    throw new Error(`Email '${studentData.email}' sudah terdaftar. Silakan gunakan email lain atau langsung masuk pada halaman login.`);
+  // 1. Ambil daftar pengguna dari penyimpanan lokal (cepat & offline-first)
+  let list = [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.USERS);
+    if (raw) list = JSON.parse(raw);
+  } catch (e) {}
+
+  if (!Array.isArray(list) || list.length === 0) {
+    try {
+      list = await getUsers();
+    } catch (e) {
+      list = [...INITIAL_USERS];
+    }
   }
 
-  if (nimClean && list.some(u => String(u.nim || '').trim() === nimClean)) {
-    throw new Error(`NIM '${nimClean}' sudah terdaftar dalam sistem. Silakan periksa kembali NIM Anda.`);
+  // 2. Cek apakah email sudah terdaftar sebelumnya
+  const existingIdx = list.findIndex(u => (u.email || '').trim().toLowerCase() === emailClean);
+  const existingUser = existingIdx >= 0 ? list[existingIdx] : null;
+
+  // Jika akun yang terdaftar merupakan akun staf/dosen, jangan izinkan ditimpa pendaftaran mahasiswa
+  if (existingUser) {
+    const exRole = (existingUser.role || '').toUpperCase();
+    if (exRole === 'SUPER_ADMIN' || exRole === 'ADMIN' || exRole === 'ADMIN_AKADEMIK' || exRole === 'BAA' || exRole === 'DOSEN') {
+      throw new Error(`Email '${studentData.email}' merupakan akun dinas LMS STIE Nasional (${exRole}). Silakan gunakan halaman Masuk/Login.`);
+    }
   }
 
-  const newUid = `user-mhs-${Date.now()}`;
-  const username = (emailClean.split('@')[0] || newUid).trim().toLowerCase();
-  const newStudent = {
-    uid: newUid,
-    id: newUid,
-    name: (studentData.name || 'Mahasiswa Baru').trim(),
+  // 3. Tentukan NIM yang valid dan bebas benturan (unique)
+  let effectiveNim = studentData.nim ? String(studentData.nim).replace(/\D/g, '') : '';
+  const angkatanVal = studentData.angkatan ? Number(studentData.angkatan) : (existingUser?.angkatan || 2026);
+  const prodiVal = studentData.prodiId || existingUser?.prodiId || 'prodi-s1-manajemen';
+
+  const isNimTakenByOther = effectiveNim && list.some(u => 
+    String(u.nim || '').trim() === effectiveNim && 
+    (u.email || '').trim().toLowerCase() !== emailClean
+  );
+
+  if (!effectiveNim || isNimTakenByOther) {
+    const yearPrefix = String(angkatanVal).slice(-2);
+    const prodiPrefix = prodiVal === 'prodi-s1-akuntansi' ? '2011' : '1011';
+    let rand = Math.floor(100 + Math.random() * 900);
+    while (list.some(u => String(u.nim || '').trim() === `${yearPrefix}${prodiPrefix}${rand}` && (u.email || '').trim().toLowerCase() !== emailClean)) {
+      rand = Math.floor(100 + Math.random() * 900);
+    }
+    effectiveNim = `${yearPrefix}${prodiPrefix}${rand}`;
+  }
+
+  const targetUid = existingUser ? (existingUser.uid || existingUser.id) : `user-mhs-${Date.now()}`;
+  const username = (emailClean.split('@')[0] || targetUid).trim().toLowerCase();
+
+  const studentObj = {
+    ...(existingUser || {}),
+    uid: targetUid,
+    id: targetUid,
+    name: (studentData.name || existingUser?.name || 'Mahasiswa Baru').trim(),
     email: emailClean,
     username,
-    password: (studentData.password && studentData.password.trim()) || 'mhs2026',
+    password: (studentData.password && studentData.password.trim()) || existingUser?.password || 'mhs2026',
     role: 'MAHASISWA',
-    nim: nimClean,
+    nim: effectiveNim,
     nidn: '',
-    angkatan: studentData.angkatan ? Number(studentData.angkatan) : 2026,
-    semester: 1,
-    prodiId: studentData.prodiId || 'prodi-s1-manajemen',
-    phone: (studentData.phone || '').trim(),
+    angkatan: angkatanVal,
+    semester: existingUser?.semester || 1,
+    prodiId: prodiVal,
+    phone: (studentData.phone || existingUser?.phone || '').trim(),
     isActive: true,
-    avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(studentData.name || 'Mahasiswa')}&background=1e3a8a&color=fff`,
-    createdAt: new Date().toISOString()
+    avatarUrl: existingUser?.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(studentData.name || 'Mahasiswa')}&background=1e3a8a&color=fff`,
+    updatedAt: new Date().toISOString()
   };
 
-  // Bersihkan dari daftar terhapus jika email/uid/nim pernah tercatat
+  if (!existingUser) {
+    studentObj.createdAt = new Date().toISOString();
+  }
+
+  // 4. Bersihkan dari blacklist akun terhapus (STIE_LMS_DELETED_USERS)
   try {
     const delRaw = localStorage.getItem('STIE_LMS_DELETED_USERS');
     if (delRaw) {
-      const delList = JSON.parse(delRaw).filter(id => id !== newUid && id !== emailClean && id !== nimClean);
+      const delList = JSON.parse(delRaw).filter(id => 
+        id !== targetUid && 
+        id !== emailClean && 
+        id !== effectiveNim &&
+        id !== username
+      );
       localStorage.setItem('STIE_LMS_DELETED_USERS', JSON.stringify(delList));
     }
   } catch (e) {}
 
-  // Direct Firestore write attempt jika online
-  if (isRealFirebaseConfigured() && db) {
+  // 5. Perbarui list pengguna
+  if (existingIdx >= 0) {
+    list[existingIdx] = studentObj;
+  } else {
+    list.unshift(studentObj);
+  }
+
+  localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(list));
+  notifyDataChange(STORAGE_KEYS.USERS, list);
+
+  // 6. Sinkronisasi dokumen pengguna ke Firestore (non-blocking)
+  if (isRealFirebaseConfigured() && db && targetUid) {
     try {
-      const cleanFbDoc = JSON.parse(JSON.stringify(newStudent));
-      await setDoc(doc(db, "users", newUid), cleanFbDoc, { merge: true });
+      const cleanFbDoc = JSON.parse(JSON.stringify(studentObj));
+      setDoc(doc(db, "users", String(targetUid)), cleanFbDoc, { merge: true }).catch(err => {
+        console.warn("Direct Firestore registerStudent setDoc warning:", err);
+      });
     } catch (e) {
-      console.warn("Direct Firestore registerStudent setDoc warning:", e);
+      console.warn("Firestore serialization warning:", e);
     }
   }
 
-  list.unshift(newStudent);
-  await setLocal(STORAGE_KEYS.USERS, list);
-  await logAudit(
-    newStudent, 
-    'REGISTER_STUDENT', 
-    `Mahasiswa mendaftar mandiri: ${newStudent.name} (${newStudent.nim}) - ${newStudent.email}`
-  );
-  return newStudent;
+  // 7. Audit log (non-blocking)
+  logAudit(
+    studentObj, 
+    existingUser ? 'UPDATE_STUDENT_REGISTRATION' : 'REGISTER_STUDENT', 
+    `Mahasiswa mendaftar mandiri: ${studentObj.name} (${studentObj.nim}) - ${studentObj.email}`
+  ).catch(e => console.warn("Audit log error:", e));
+
+  return studentObj;
 }
 
 export async function toggleUserActive(uid, user) {

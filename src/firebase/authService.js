@@ -50,14 +50,21 @@ export async function loginUser(identifier, password) {
     throw new Error("Silakan masukkan kata sandi akun Anda.");
   }
 
-  // 1. Kumpulkan seluruh pengguna dari getUsers() yang memadukan data cloud Firestore dan local storage secara terpadu
+  // 1. Kumpulkan seluruh pengguna: utamakan localStorage (cepat & offline-first), fallback ke getUsers()
   let combinedUsers = [];
   try {
-    combinedUsers = await getUsers();
-  } catch (e) {
-    console.warn("getUsers error during login:", e);
     const stored = localStorage.getItem('STIE_LMS_USERS');
-    combinedUsers = stored ? JSON.parse(stored) : [...INITIAL_USERS];
+    if (stored) {
+      combinedUsers = JSON.parse(stored);
+    }
+  } catch (e) {}
+
+  if (!Array.isArray(combinedUsers) || combinedUsers.length === 0) {
+    try {
+      combinedUsers = await getUsers();
+    } catch (e) {
+      combinedUsers = [...INITIAL_USERS];
+    }
   }
 
   // Jika ada akun admin di storage yang masih memakai password usang admin123, otomatis mutakhirkan ke admin126
@@ -362,4 +369,6 @@ export async function directResetPassword(identifier, newPassword) {
     nim: target.nim
   };
 }
+
+export { registerStudent } from './firestoreService.js';
 
