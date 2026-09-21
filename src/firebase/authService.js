@@ -176,16 +176,16 @@ export async function loginUser(identifier, password) {
     // Verifikasi kata sandi dengan toleransi ramah untuk akun dinas (Admin & BAA)
     let isPasswordValid = (rawPass === expectedPassword);
 
-    // Untuk Super Admin: dukung admin126 (resmi) dan admin123 (klasik)
+    // Untuk Super Admin: hanya dukung admin126 (resmi)
     if (!isPasswordValid && (uRole === 'SUPER_ADMIN' || uRole === 'ADMIN')) {
-      if (rawPass === 'admin126' || rawPass === 'admin123' || rawPass === 'admin') {
+      if (rawPass === 'admin126') {
         isPasswordValid = true;
       }
     }
 
-    // Untuk Admin Akademik (BAA): dukung akademik123 (resmi), baa123, admin123, atau akademik
+    // Untuk Admin Akademik (BAA): dukung akademik123 (resmi), baa123, atau akademik
     if (!isPasswordValid && (uRole === 'ADMIN_AKADEMIK' || uRole === 'BAA')) {
-      if (rawPass === 'akademik123' || rawPass === 'baa123' || rawPass === 'admin123' || rawPass === 'akademik' || rawPass === 'baa') {
+      if (rawPass === 'akademik123' || rawPass === 'baa123' || rawPass === 'akademik' || rawPass === 'baa') {
         isPasswordValid = true;
       }
     }
