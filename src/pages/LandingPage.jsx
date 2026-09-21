@@ -117,15 +117,6 @@ export default function LandingPage({ onGoToLogin, onGoToRegister }) {
             {/* Action CTA & Mobile Hamburger */}
             <div className="flex items-center space-x-2">
               <button
-                type="button"
-                onClick={onGoToRegister || onGoToLogin}
-                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-bold transition-all"
-              >
-                <UserPlus className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Daftar Mahasiswa</span>
-              </button>
-
-              <button
                 onClick={onGoToLogin}
                 className="inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-2 bg-brand-800 hover:bg-brand-900 text-white rounded-xl text-xs font-bold shadow-md shadow-brand-950/10 transition-all transform hover:-translate-y-0.5"
               >
@@ -182,19 +173,6 @@ export default function LandingPage({ onGoToLogin, onGoToRegister }) {
             </a>
             
             <div className="pt-2 border-t border-slate-100 flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  if (onGoToRegister) onGoToRegister();
-                  else onGoToLogin();
-                  setMobileMenuOpen(false);
-                }}
-                className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-bold shadow-sm"
-              >
-                <UserPlus className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Daftar Mahasiswa Baru</span>
-              </button>
-
               <button
                 type="button"
                 onClick={() => {

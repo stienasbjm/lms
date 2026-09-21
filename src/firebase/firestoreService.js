@@ -93,24 +93,69 @@ export function isUserDeleted(user, deletedList) {
   const nim = user.nim ? String(user.nim).trim() : '';
   const role = (user.role || '').toUpperCase();
 
-  // Akun inti institusi (Super Admin, BAA, Dosen utama, dan Mahasiswa resmi) DILINDUNGI MUTLAK dari penghapusan
+  // Akun inti institusi (Super Admin, BAA, Dosen resmi, dan Mahasiswa mandiri resmi) DILINDUNGI MUTLAK dari penghapusan
+  const officialProtectedEmails = [
+    'admin@stienas.ac.id',
+    'superadmin@stienas.ac.id',
+    'akademik@stienas.ac.id',
+    'adminakademik@stienas.ac.id',
+    'mohdaribjm@gmail.com',
+    'arief@stienas-ypb.ac.id',
+    'waket1@stienas-ypb.ac.id',
+    'mailiana.01@gmail.com',
+    'rakhmiridhawati51@gmail.com',
+    'nadiayuni16@gmail.com',
+    'dellapuspita2436@gmail.com',
+    'muhammadarifzairullah@gmail.com',
+    'ayung006@gmail.com',
+    'raby79279@gmail.com',
+    'siti@gmail.com'
+  ];
+
+  const officialProtectedUids = [
+    'user-admin-1',
+    'user-admin-2',
+    'user-dosen-1',
+    'user-dosen-1789698585944',
+    'user-dosen-1789742932417',
+    'user-dosen-1789782310180',
+    'user-dosen-2',
+    'user-mhs-1789798197871',
+    'user-mhs-1789800818486',
+    'user-mhs-1789801049377',
+    'user-mhs-1789801227932',
+    'user-mhs-1789806444944',
+    'user-mhs-1789909513563'
+  ];
+
+  const officialProtectedNims = [
+    '251011152',
+    '20251111631',
+    '20251111611',
+    '20251111600',
+    '20251111644',
+    '262011547'
+  ];
+
   if (
     role === 'SUPER_ADMIN' || 
     role === 'ADMIN_AKADEMIK' || 
-    uid === 'user-admin-1' || 
-    id === 'user-admin-1' ||
-    uid === 'user-admin-2' || 
-    id === 'user-admin-2' ||
-    email === 'admin@stienas.ac.id' ||
-    email === 'akademik@stienas.ac.id' ||
-    email === 'superadmin@stienas.ac.id' ||
-    email === 'adminakademik@stienas.ac.id' ||
+    officialProtectedUids.includes(uid) ||
+    officialProtectedUids.includes(id) ||
+    officialProtectedEmails.includes(email) ||
+    officialProtectedNims.includes(nim) ||
     username === 'admin' ||
     username === 'akademik' ||
-    uid === 'user-mhs-1789806444944' || 
-    id === 'user-mhs-1789806444944' || 
-    email === 'raby79279@gmail.com' || 
-    nim === '20251111644'
+    username === 'dosen' ||
+    username === 'arief' ||
+    username === 'waket1' ||
+    username === 'mailiana.01' ||
+    username === 'raby79279' ||
+    username === 'ayung006' ||
+    username === 'nadiayuni16' ||
+    username === 'dellapuspita2436' ||
+    username === 'muhammadarifzairullah' ||
+    username === 'siti'
   ) {
     return false;
   }
@@ -458,42 +503,110 @@ export async function initializeLocalStore() {
     await setLocal(STORAGE_KEYS.TA, cleanTa);
   }
 
-  // Bersihkan akun inti sistem (Admin, BAA, Dosen, Rabiyah) dari blacklist jika pernah tercatat
+  // 1. Bersihkan seluruh akun master resmi institusi dari blacklist jika pernah tercatat
+  const officialProtectedUids = [
+    'user-admin-1',
+    'user-admin-2',
+    'user-dosen-1',
+    'user-dosen-1789698585944',
+    'user-dosen-1789742932417',
+    'user-dosen-1789782310180',
+    'user-dosen-2',
+    'user-mhs-1789798197871',
+    'user-mhs-1789800818486',
+    'user-mhs-1789801049377',
+    'user-mhs-1789801227932',
+    'user-mhs-1789806444944',
+    'user-mhs-1789909513563'
+  ];
+  const officialProtectedEmails = [
+    'admin@stienas.ac.id',
+    'superadmin@stienas.ac.id',
+    'akademik@stienas.ac.id',
+    'adminakademik@stienas.ac.id',
+    'mohdaribjm@gmail.com',
+    'arief@stienas-ypb.ac.id',
+    'waket1@stienas-ypb.ac.id',
+    'mailiana.01@gmail.com',
+    'rakhmiridhawati51@gmail.com',
+    'nadiayuni16@gmail.com',
+    'dellapuspita2436@gmail.com',
+    'muhammadarifzairullah@gmail.com',
+    'ayung006@gmail.com',
+    'raby79279@gmail.com',
+    'siti@gmail.com'
+  ];
+  const officialProtectedNims = [
+    '251011152',
+    '20251111631',
+    '20251111611',
+    '20251111600',
+    '20251111644',
+    '262011547'
+  ];
+
   try {
     const delUsersRaw = localStorage.getItem('STIE_LMS_DELETED_USERS');
     if (delUsersRaw) {
       const parsed = JSON.parse(delUsersRaw);
-      const filtered = parsed.filter(id => 
-        id !== 'user-admin-1' && 
-        id !== 'user-admin-2' && 
-        id !== 'admin@stienas.ac.id' && 
-        id !== 'akademik@stienas.ac.id' && 
-        id !== 'admin' && 
-        id !== 'akademik' && 
-        id !== 'user-mhs-1789806444944' && 
-        id !== 'raby79279@gmail.com'
-      );
+      const filtered = parsed.filter(id => {
+        const idStr = String(id).toLowerCase().trim();
+        return !officialProtectedUids.includes(id) && 
+               !officialProtectedEmails.includes(idStr) && 
+               !officialProtectedNims.includes(idStr) &&
+               idStr !== 'admin' && 
+               idStr !== 'akademik';
+      });
       localStorage.setItem('STIE_LMS_DELETED_USERS', JSON.stringify(filtered));
     }
   } catch (e) {}
 
+  // 2. Bersihkan kelas perkuliahan institusi resmi dari blacklist agar selalu dipulihkan
+  const officialProtectedClassIds = INITIAL_CLASSES.map(c => String(c.id));
+  try {
+    const delClassesRaw = localStorage.getItem('STIE_LMS_DELETED_CLASSES');
+    if (delClassesRaw) {
+      const parsed = JSON.parse(delClassesRaw);
+      const filtered = parsed.filter(id => !officialProtectedClassIds.includes(String(id)));
+      localStorage.setItem('STIE_LMS_DELETED_CLASSES', JSON.stringify(filtered));
+    }
+  } catch (e) {}
+
+  // 3. Bersihkan mata kuliah resmi institusi dari blacklist agar selalu dipulihkan
+  const officialProtectedMkIds = INITIAL_MK.map(m => String(m.id));
+  try {
+    const delMkRaw = localStorage.getItem('STIE_LMS_DELETED_MK');
+    if (delMkRaw) {
+      const parsed = JSON.parse(delMkRaw);
+      const filtered = parsed.filter(id => !officialProtectedMkIds.includes(String(id)));
+      localStorage.setItem('STIE_LMS_DELETED_MK', JSON.stringify(filtered));
+    }
+  } catch (e) {}
+
   const currentUsers = await getLocal(STORAGE_KEYS.USERS, INITIAL_USERS);
-  // Pastikan seluruh akun inti (Super Admin, BAA, Dosen, Mahasiswa Utama) selalu ada dan aktif di currentUsers
-  let usersChanged = false;
+  // Hapus akun dummy/sampel lama (bukan akun riil)
+  const dummyUids = ['user-mhs-4', 'user-mhs-1', 'user-mhs-2', 'user-mhs-3', 'user-mahasiswa-1789742014560'];
+  let sanitizedUsers = currentUsers.filter(u => {
+    const uid = String(u.uid || u.id || '');
+    return !dummyUids.includes(uid) && u.email !== 'mahasiswa@stienas.ac.id';
+  });
+
+  let usersChanged = sanitizedUsers.length !== currentUsers.length;
+  // Pastikan seluruh akun inti (Super Admin, BAA, Dosen resmi, Mahasiswa mandiri resmi) selalu ada dan aktif
   INITIAL_USERS.forEach(coreUser => {
-    const exists = currentUsers.some(u => 
+    const exists = sanitizedUsers.some(u => 
       (u.uid && (u.uid === coreUser.uid || u.id === coreUser.uid)) ||
       (u.email && u.email.toLowerCase().trim() === coreUser.email.toLowerCase().trim()) ||
       (coreUser.username && u.username && u.username.toLowerCase().trim() === coreUser.username.toLowerCase().trim())
     );
     if (!exists) {
-      currentUsers.unshift({ ...coreUser });
+      sanitizedUsers.push({ ...coreUser });
       usersChanged = true;
     }
   });
 
   // Sinkronisasi otomatis field semester untuk seluruh akun mahasiswa (misal: Angkatan 2025 -> Semester 3, Angkatan 2026 -> Semester 1)
-  currentUsers.forEach(u => {
+  sanitizedUsers.forEach(u => {
     if ((u.role || '').toUpperCase() === 'MAHASISWA') {
       const standing = calculateAcademicStanding(u.nim, u.angkatan);
       if (standing && standing.semester && Number(u.semester) !== standing.semester) {
@@ -504,7 +617,7 @@ export async function initializeLocalStore() {
   });
 
   if (usersChanged) {
-    await setLocal(STORAGE_KEYS.USERS, currentUsers);
+    await setLocal(STORAGE_KEYS.USERS, sanitizedUsers);
   }
 
   // Pastikan Mata Kuliah yang baru disertakan dan yang dihapus tidak dibangkitkan
@@ -553,8 +666,13 @@ export async function initializeLocalStore() {
     .filter(cls => !deletedClassIds.includes(String(cls.id)))
     .map(cls => {
       const clsId = String(cls.uid || cls.id || '');
+      const mk = combinedMks.find(m => String(m.id) === String(cls.mataKuliahId) || m.kodeMk === cls.kodeMk);
+      const courseSemester = Number(cls.semester || mk?.semesterDefault || 1);
       return {
         ...cls,
+        semester: courseSemester,
+        tahunAkademikId: cls.tahunAkademikId || 'ta-20261',
+        namaTa: cls.namaTa || '2026/2027 Ganjil',
         meetings: (cls.meetings || []).map(m => {
           const mNum = Number(m.pertemuanKe);
           const cfg = meetingConfigs[`${clsId}_${mNum}`] || meetingConfigs[`${cls.id}_${mNum}`] || {};
@@ -1833,14 +1951,25 @@ export async function syncClassesAndStudentsBySemester(user) {
   }
 
   let totalSyncCount = 0;
+  let classChanges = false;
   const updatedClasses = classesList.map(cls => {
     const isTaMatch = cls.tahunAkademikId === activeTa.id || cls.namaTa === activeTa.namaTa;
-    if (!isTaMatch || cls.status === 'CLOSED') return cls;
-
     const mk = mks.find(m => String(m.id) === String(cls.mataKuliahId) || m.kodeMk === cls.kodeMk);
+    const courseSemester = Number(cls.semester || mk?.semesterDefault || 1);
+
+    if (cls.semester !== courseSemester) {
+      cls.semester = courseSemester;
+      classChanges = true;
+    }
+    if (!cls.tahunAkademikId) {
+      cls.tahunAkademikId = activeTa.id;
+      cls.namaTa = activeTa.namaTa;
+      classChanges = true;
+    }
+
+    if (!isTaMatch || cls.status === 'CLOSED') return cls;
     if (!mk) return cls;
 
-    const courseSemester = Number(mk.semesterDefault || 1);
     if (!Array.isArray(cls.enrolledStudents)) {
       cls.enrolledStudents = [];
     }
@@ -1856,6 +1985,7 @@ export async function syncClassesAndStudentsBySemester(user) {
         if (!cls.enrolledStudents.includes(stUid)) {
           cls.enrolledStudents.push(stUid);
           totalSyncCount++;
+          classChanges = true;
         }
       }
     });
@@ -1863,7 +1993,7 @@ export async function syncClassesAndStudentsBySemester(user) {
     return cls;
   });
 
-  if (totalSyncCount > 0) {
+  if (totalSyncCount > 0 || classChanges) {
     await setLocal(STORAGE_KEYS.CLASSES, updatedClasses);
   }
 
