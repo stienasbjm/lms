@@ -380,47 +380,6 @@ export default function LoginPage({ onBackToLanding, defaultAuthMode = 'LOGIN' }
                     </>
                   )}
                 </button>
-
-                {/* Akses Cepat Akun Resmi STIE Nasional */}
-                <div className="mt-4 pt-3 border-t border-slate-200/80 text-center">
-                  <span className="text-[11px] font-bold text-slate-500 block mb-2">
-                    Akses Cepat Pengujian Akun Resmi:
-                  </span>
-                  <div className="grid grid-cols-2 gap-2 text-left">
-                    <button
-                      type="button"
-                      onClick={() => { setIdentifier('admin'); setPassword('admin126'); setErrorMessage(''); }}
-                      className="p-2 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-xl text-purple-950 transition-all hover:scale-[1.02] active:scale-[0.98]"
-                    >
-                      <span className="font-bold block text-[11px] text-purple-900">🛡️ Super Admin</span>
-                      <span className="font-mono text-slate-500 text-[10px] block">admin / admin126</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setIdentifier('akademik'); setPassword('akademik123'); setErrorMessage(''); }}
-                      className="p-2 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl text-indigo-950 transition-all hover:scale-[1.02] active:scale-[0.98]"
-                    >
-                      <span className="font-bold block text-[11px] text-indigo-900">🏛️ Admin BAA</span>
-                      <span className="font-mono text-slate-500 text-[10px] block">akademik / akademik123</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setIdentifier('dosen'); setPassword('dosen123'); setErrorMessage(''); }}
-                      className="p-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl text-blue-950 transition-all hover:scale-[1.02] active:scale-[0.98]"
-                    >
-                      <span className="font-bold block text-[11px] text-blue-900">👨‍🏫 Dosen</span>
-                      <span className="font-mono text-slate-500 text-[10px] block">dosen / dosen123</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setIdentifier('mahasiswa'); setPassword('mhs123'); setErrorMessage(''); }}
-                      className="p-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl text-emerald-950 transition-all hover:scale-[1.02] active:scale-[0.98]"
-                    >
-                      <span className="font-bold block text-[11px] text-emerald-900">🎓 Mahasiswa</span>
-                      <span className="font-mono text-slate-500 text-[10px] block">mahasiswa / mhs123</span>
-                    </button>
-                  </div>
-                </div>
               </form>
             </>
           )}

@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { useAuth } from '../context/AuthContext';
 import { 
   GraduationCap, 
   ArrowRight, 
@@ -35,58 +34,8 @@ import {
 } from 'lucide-react';
 
 export default function LandingPage({ onGoToLogin, onGoToRegister }) {
-  const { loginAsRole } = useAuth();
   const [activeFaq, setActiveFaq] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  const handleQuickLogin = (role) => {
-    loginAsRole(role);
-  };
-
-  const demoAccounts = [
-    {
-      role: 'ADMIN',
-      badge: 'Super Admin',
-      badgeColor: 'bg-purple-100 text-purple-800 border-purple-200',
-      title: 'Administrator Sistem',
-      email: 'nama@gmail.com',
-      password: 'admin126',
-      description: 'Akses penuh tata kelola master akademik OBE, integrasi cloud database Firebase, impor data massal JSON, dan audit log.',
-      features: ['Master Kurikulum OBE & CPL/CPMK', 'Konfigurasi Cloud Firebase BaaS', 'Audit Trail & Manajemen Pengguna']
-    },
-    {
-      role: 'AKADEMIK',
-      badge: 'Admin BAA',
-      badgeColor: 'bg-indigo-100 text-indigo-800 border-indigo-200',
-      title: 'Bagian Akademik (BAA)',
-      email: 'akademik@stienas.ac.id',
-      password: 'akademik123',
-      description: 'Otoritas pembukaan & penutupan semester OBE, penyusunan kelas perkuliahan paralel 16 sesi, dan penugasan dosen pengampu.',
-      features: ['Buka & Tutup Semester Manual BAA', 'Buat Kelas Kuliah 16 Sesi RPS', 'Distribusi Dosen & Kuota Mahasiswa']
-    },
-    {
-      role: 'DOSEN',
-      badge: 'Dosen Pengampu',
-      badgeColor: 'bg-blue-100 text-blue-800 border-blue-200',
-      title: 'Dosen Pengampu OBE',
-      email: 'dosen@stienas.ac.id',
-      password: 'dosen123',
-      identifierExtra: 'NUPTK/NIP: 1105087501',
-      description: 'Dr. H. Muhammad Ramli, S.E., M.M. Pengelolaan modul 16 Sub-CPMK, tatap muka daring, presensi, dan penilaian asesmen otentik.',
-      features: ['16 Sub-CPMK & Rubrik Otentik', 'Sematkan Link Drive Bahan Ajar', 'Evaluasi Ketercapaian CPMK Mahasiswa']
-    },
-    {
-      role: 'MAHASISWA',
-      badge: 'Mahasiswa',
-      badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-      title: 'Mahasiswa (Putri Maharani)',
-      email: 'mahasiswa@stienas.ac.id',
-      password: 'mhs123',
-      identifierExtra: 'NIM: 261011001',
-      description: 'Putri Maharani (S1 Manajemen). Mempelajari modul 16 sesi, menyematkan portofolio tugas, dan memantau KHS berstandar OBE.',
-      features: ['Akses 16 Modul Sub-CPMK', 'Sematkan Link Portofolio Tugas', 'KHS Komprehensif & Ketercapaian CPL']
-    }
-  ];
 
   const faqs = [
     {
