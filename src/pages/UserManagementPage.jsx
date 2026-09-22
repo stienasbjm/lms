@@ -36,7 +36,9 @@ import {
   EyeOff,
   AlertTriangle,
   Save,
-  CheckCircle2
+  CheckCircle2,
+  SortAsc,
+  SortDesc
 } from 'lucide-react';
 import { showSuccessAlert, showErrorAlert, showSuccessToast, showErrorToast, showConfirmDialog } from '../utils/alert';
 
@@ -46,6 +48,10 @@ export default function UserManagementPage() {
   const [prodis, setProdis] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('ALL');
+  const [filterProdiId, setFilterProdiId] = useState('ALL');
+  const [filterAngkatan, setFilterAngkatan] = useState('ALL');
+  const [sortByUM, setSortByUM] = useState('name'); // name | nim | angkatan | role
+  const [sortOrderUM, setSortOrderUM] = useState('asc');
   const [loading, setLoading] = useState(true);
 
   // Modal States
@@ -146,16 +152,48 @@ export default function UserManagementPage() {
     : users;
 
   // Search and Filter
-  const filteredUsers = effectiveUsers.filter(u => {
-    const matchSearch = (u.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        (u.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        (u.nim || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        (u.nidn || '').toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const uRole = (u.role || '').toUpperCase();
-    const matchRole = roleFilter === 'ALL' || uRole === roleFilter.toUpperCase();
-    return matchSearch && matchRole;
-  });
+  const filteredUsers = effectiveUsers
+    .filter(u => {
+      const matchSearch = (u.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (u.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (u.nim || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (u.nidn || '').toLowerCase().includes(searchTerm.toLowerCase());
+      
+      const uRole = (u.role || '').toUpperCase();
+      const matchRole = roleFilter === 'ALL' || uRole === roleFilter.toUpperCase();
+
+      const matchProdi = filterProdiId === 'ALL' || u.prodiId === filterProdiId;
+
+      const matchAngkatan = filterAngkatan === 'ALL' || String(u.angkatan) === String(filterAngkatan);
+
+      return matchSearch && matchRole && matchProdi && matchAngkatan;
+    })
+    .sort((a, b) => {
+      let valA, valB;
+      if (sortByUM === 'nim') {
+        valA = a.nim || '';
+        valB = b.nim || '';
+      } else if (sortByUM === 'angkatan') {
+        valA = Number(a.angkatan) || 0;
+        valB = Number(b.angkatan) || 0;
+        return sortOrderUM === 'asc' ? valA - valB : valB - valA;
+      } else if (sortByUM === 'role') {
+        valA = a.role || '';
+        valB = b.role || '';
+      } else {
+        valA = a.name || '';
+        valB = b.name || '';
+      }
+      const cmp = String(valA).localeCompare(String(valB), 'id');
+      return sortOrderUM === 'asc' ? cmp : -cmp;
+    });
+
+  // Dapatkan daftar angkatan unik dari mahasiswa yang ada
+  const angkatanOptions = [...new Set(
+    effectiveUsers
+      .filter(u => (u.role || '').toUpperCase() === 'MAHASISWA' && u.angkatan)
+      .map(u => u.angkatan)
+  )].sort((a, b) => b - a);
 
   const studentCount = effectiveUsers.filter(u => (u.role || '').toUpperCase() === 'MAHASISWA').length;
   const lecturerCount = effectiveUsers.filter(u => (u.role || '').toUpperCase() === 'DOSEN').length;
@@ -458,37 +496,100 @@ export default function UserManagementPage() {
       </div>
 
       {/* Filter & Search Bar */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row gap-3 justify-between items-center text-xs">
-        <div className="relative w-full sm:w-80">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-          <input
-            type="text"
-            placeholder="Cari nama, NIM, NUPTK/NIP, atau email..."
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 text-xs"
-          />
+      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-3 text-xs">
+        {/* Row 1: Search + Filter Peran */}
+        <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
+          <div className="relative w-full sm:w-80">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+            <input
+              type="text"
+              placeholder="Cari nama, NIM, NUPTK/NIP, atau email..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 text-xs"
+            />
+          </div>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
+            <span className="text-slate-500 font-medium">Filter Peran:</span>
+            <select
+              value={roleFilter}
+              onChange={e => setRoleFilter(e.target.value)}
+              className="px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 bg-white text-xs font-semibold text-slate-800"
+            >
+              <option value="ALL">
+                {isSuperAdmin ? `Semua Peran (${effectiveUsers.length})` : `Semua Akun BAA (${effectiveUsers.length})`}
+              </option>
+              <option value="MAHASISWA">Mahasiswa ({studentCount})</option>
+              <option value="DOSEN">Dosen Pengampu ({lecturerCount})</option>
+              {isSuperAdmin && (
+                <>
+                  <option value="ADMIN_AKADEMIK">Admin BAA</option>
+                  <option value="SUPER_ADMIN">Super Admin</option>
+                </>
+              )}
+            </select>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <span className="text-slate-500 font-medium">Filter Peran:</span>
+        {/* Row 2: Filter Prodi + Angkatan + Sort */}
+        <div className="flex flex-col sm:flex-row gap-2 items-center flex-wrap border-t border-slate-100 pt-2.5">
+          <span className="text-slate-500 font-medium shrink-0">Filter Lanjutan:</span>
+          
           <select
-            value={roleFilter}
-            onChange={e => setRoleFilter(e.target.value)}
-            className="px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 bg-white text-xs font-semibold text-slate-800"
+            value={filterProdiId}
+            onChange={e => setFilterProdiId(e.target.value)}
+            className="px-2.5 py-1.5 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 bg-white text-xs font-semibold text-slate-800"
           >
-            <option value="ALL">
-              {isSuperAdmin ? `Semua Peran (${effectiveUsers.length})` : `Semua Akun BAA (${effectiveUsers.length})`}
-            </option>
-            <option value="MAHASISWA">Mahasiswa ({studentCount})</option>
-            <option value="DOSEN">Dosen Pengampu ({lecturerCount})</option>
-            {isSuperAdmin && (
-              <>
-                <option value="ADMIN_AKADEMIK">Admin BAA</option>
-                <option value="SUPER_ADMIN">Super Admin</option>
-              </>
-            )}
+            <option value="ALL">Semua Program Studi</option>
+            {prodis.map(p => (
+              <option key={p.id} value={p.id}>{p.namaProdi}</option>
+            ))}
           </select>
+
+          <select
+            value={filterAngkatan}
+            onChange={e => setFilterAngkatan(e.target.value)}
+            className="px-2.5 py-1.5 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 bg-white text-xs font-semibold text-slate-800"
+          >
+            <option value="ALL">Semua Angkatan</option>
+            {angkatanOptions.map(thn => (
+              <option key={thn} value={thn}>Angkatan {thn}</option>
+            ))}
+          </select>
+
+          <div className="flex items-center gap-1.5 ml-auto">
+            <span className="text-slate-500 font-medium">Urutkan:</span>
+            <select
+              value={sortByUM}
+              onChange={e => setSortByUM(e.target.value)}
+              className="px-2.5 py-1.5 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 bg-white text-xs font-semibold text-slate-800"
+            >
+              <option value="name">Nama</option>
+              <option value="nim">NIM</option>
+              <option value="angkatan">Angkatan</option>
+              <option value="role">Peran</option>
+            </select>
+            <button
+              onClick={() => setSortOrderUM(p => p === 'asc' ? 'desc' : 'asc')}
+              className="p-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 transition-colors"
+              title={sortOrderUM === 'asc' ? 'A-Z / Terkecil dulu' : 'Z-A / Terbesar dulu'}
+            >
+              {sortOrderUM === 'asc'
+                ? <SortAsc className="w-4 h-4 text-brand-700" />
+                : <SortDesc className="w-4 h-4 text-brand-700" />
+              }
+            </button>
+            {(filterProdiId !== 'ALL' || filterAngkatan !== 'ALL' || searchTerm || roleFilter !== 'ALL') && (
+              <button
+                onClick={() => { setFilterProdiId('ALL'); setFilterAngkatan('ALL'); setSearchTerm(''); setRoleFilter('ALL'); }}
+                className="px-2.5 py-1.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 font-bold hover:bg-rose-100 transition-colors text-xs flex items-center gap-1"
+              >
+                <X className="w-3 h-3" /> Reset Filter
+              </button>
+            )}
+            <span className="text-slate-400 font-medium">{filteredUsers.length} akun</span>
+          </div>
         </div>
       </div>
 

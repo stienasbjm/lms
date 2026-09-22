@@ -104,41 +104,38 @@ export async function loginUser(identifier, password) {
     }
   } catch (e) {}
 
-  // 2. Cari pengguna yang cocok secara tepat atau berdasarkan peran
+  // 2. Cari pengguna yang cocok secara tepat berdasarkan email, username, NIM, atau NIDN
   let foundUser = combinedUsers.find(u => {
     const uEmail = (u.email || '').toLowerCase().trim();
-    const uAlias = (u.aliasEmail || '').toLowerCase().trim();
     const uUser = (u.username || '').toLowerCase().trim();
     const uNim = String(u.nim || '').trim().toLowerCase();
     const uNidn = String(u.nidn || '').trim().toLowerCase();
     const uRole = (u.role || '').toUpperCase();
 
-    if (uEmail && (uEmail === trimmed || uAlias.split(/[\s,]+/).includes(trimmed))) return true;
+    // Pencocokan tepat berdasarkan email
+    if (uEmail && uEmail === trimmed) return true;
+    // Pencocokan tepat berdasarkan username
     if (uUser && uUser === trimmed) return true;
+    // Pencocokan tepat berdasarkan NIM
     if (uNim && uNim === trimmed) return true;
+    // Pencocokan tepat berdasarkan NIDN
     if (uNidn && uNidn === trimmed) return true;
 
-    // Pencocokan fleksibel peran Admin
+    // Pencocokan email resmi Super Admin
     if (
-      (trimmed === 'admin' || trimmed === 'superadmin' || trimmed === 'administrator' || trimmed === 'admin@stienas.ac.id' || trimmed === 'superadmin@stienas.ac.id') && 
+      (trimmed === 'admin@stienas.ac.id') &&
       (uRole === 'SUPER_ADMIN' || uRole === 'ADMIN')
     ) {
       return true;
     }
 
-    // Pencocokan fleksibel peran BAA (Bagian Administrasi Akademik)
+    // Pencocokan email resmi BAA
     if (
-      (trimmed === 'akademik' || trimmed === 'baa' || trimmed === 'adminakademik' || trimmed === 'admin.akademik' || trimmed === 'admin_akademik' || trimmed === 'baa@stienas.ac.id' || trimmed === 'akademik@stienas.ac.id' || trimmed === 'adminakademik@stienas.ac.id') && 
+      (trimmed === 'akademik@stienas.ac.id') &&
       (uRole === 'ADMIN_AKADEMIK' || uRole === 'BAA')
     ) {
       return true;
     }
-
-    // Pencocokan fleksibel peran Dosen
-    if (trimmed === 'dosen' && uRole === 'DOSEN') return true;
-
-    // Pencocokan fleksibel peran Mahasiswa
-    if ((trimmed === 'mahasiswa' || trimmed === 'mhs') && uRole === 'MAHASISWA') return true;
 
     return false;
   });
@@ -173,19 +170,12 @@ export async function loginUser(identifier, password) {
     const expectedPassword = foundUser.password ? String(foundUser.password).trim() : '';
     const uRole = (foundUser.role || '').toUpperCase();
 
-    // Verifikasi kata sandi dengan toleransi ramah untuk akun dinas (Admin & BAA)
+    // Verifikasi kata sandi — harus cocok dengan password yang tersimpan di akun
     let isPasswordValid = (rawPass === expectedPassword);
 
-    // Untuk Super Admin: hanya dukung admin126 (resmi)
+    // Fallback password resmi Admin Sistem (admin126) — hanya jika password di akun berbeda
     if (!isPasswordValid && (uRole === 'SUPER_ADMIN' || uRole === 'ADMIN')) {
       if (rawPass === 'admin126') {
-        isPasswordValid = true;
-      }
-    }
-
-    // Untuk Admin Akademik (BAA): hanya terima akademik126 (password resmi)
-    if (!isPasswordValid && (uRole === 'ADMIN_AKADEMIK' || uRole === 'BAA')) {
-      if (rawPass === 'akademik126') {
         isPasswordValid = true;
       }
     }

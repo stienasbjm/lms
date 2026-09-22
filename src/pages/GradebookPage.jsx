@@ -36,7 +36,11 @@ import {
   AlertCircle,
   Lock,
   Calendar,
-  Printer
+  Printer,
+  Search,
+  SortAsc,
+  SortDesc,
+  X
 } from 'lucide-react';
 
 export default function GradebookPage({ initialClassId }) {
@@ -56,13 +60,18 @@ export default function GradebookPage({ initialClassId }) {
 
   // Edit Modal State (Dosen / Admin)
   const [editingStudent, setEditingStudent] = useState(null);
-  const [overrideGrade, setOverrideGrade] = useState('AUTO'); // 'AUTO' atau 'A', 'B', 'B+', 'C', 'C+', 'D', 'E', 'T'
+  const [overrideGrade, setOverrideGrade] = useState('AUTO');
   const [scoresForm, setScoresForm] = useState({
     nilaiTugas: 80,
     nilaiKuis: 80,
     nilaiUts: 80,
     nilaiUas: 80
   });
+
+  // State Search & Sort Gradebook (Admin/Dosen)
+  const [gbSearchQuery, setGbSearchQuery] = useState('');
+  const [gbSortBy, setGbSortBy] = useState('nama'); // nama | nim | nilaiAkhir | huruf
+  const [gbSortOrder, setGbSortOrder] = useState('asc'); // asc | desc
 
   const loadData = async (isInitial = false) => {
     if (isInitial && classes.length === 0) {
@@ -686,6 +695,40 @@ export default function GradebookPage({ initialClassId }) {
     };
   });
 
+  // Filter & Sort Mahasiswa di Gradebook
+  const filteredGbStudents = enrolledStudents
+    .filter(item => {
+      if (!gbSearchQuery.trim()) return true;
+      const q = gbSearchQuery.toLowerCase();
+      return (
+        (item.user?.name || '').toLowerCase().includes(q) ||
+        (item.user?.nim || '').toLowerCase().includes(q) ||
+        (item.user?.username || '').toLowerCase().includes(q)
+      );
+    })
+    .sort((a, b) => {
+      let valA, valB;
+      if (gbSortBy === 'nim') {
+        valA = a.user?.nim || a.user?.username || '';
+        valB = b.user?.nim || b.user?.username || '';
+      } else if (gbSortBy === 'nilaiAkhir') {
+        valA = a.grade.nilaiAkhir || 0;
+        valB = b.grade.nilaiAkhir || 0;
+        return gbSortOrder === 'asc' ? valA - valB : valB - valA;
+      } else if (gbSortBy === 'huruf') {
+        valA = a.grade.nilaiHuruf || 'E';
+        valB = b.grade.nilaiHuruf || 'E';
+      } else {
+        // default: nama
+        valA = a.user?.name || '';
+        valB = b.user?.name || '';
+      }
+      const cmp = valA.localeCompare(valB, 'id');
+      return gbSortOrder === 'asc' ? cmp : -cmp;
+    });
+
+  const toggleGbSortOrder = () => setGbSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+
   const selectedClassEnrolledRows = enrolledStudents.map(item => ({
     nim: item.user?.nim || item.user?.username || '-',
     nama: item.user?.name || '-',
@@ -877,6 +920,55 @@ export default function GradebookPage({ initialClassId }) {
 
       {/* Grade Table with OBE CPMK Columns */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+
+        {/* Search & Sort Bar */}
+        <div className="p-3 border-b border-slate-200 flex flex-col sm:flex-row gap-2 items-center justify-between bg-slate-50/60">
+          <div className="relative w-full sm:w-72">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+            <input
+              type="text"
+              placeholder="Cari nama atau NIM mahasiswa..."
+              value={gbSearchQuery}
+              onChange={e => setGbSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-8 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 text-xs bg-white"
+            />
+            {gbSearchQuery && (
+              <button
+                onClick={() => setGbSearchQuery('')}
+                className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-slate-500 font-medium">Urutkan:</span>
+            <select
+              value={gbSortBy}
+              onChange={e => setGbSortBy(e.target.value)}
+              className="px-2.5 py-1.5 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-brand-500 bg-white font-semibold text-slate-800"
+            >
+              <option value="nama">Nama (A-Z)</option>
+              <option value="nim">NIM</option>
+              <option value="nilaiAkhir">Nilai Akhir</option>
+              <option value="huruf">Huruf Mutu</option>
+            </select>
+            <button
+              onClick={toggleGbSortOrder}
+              className="p-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 transition-colors"
+              title={gbSortOrder === 'asc' ? 'Urutan A-Z / Terkecil ke Terbesar' : 'Urutan Z-A / Terbesar ke Terkecil'}
+            >
+              {gbSortOrder === 'asc'
+                ? <SortAsc className="w-4 h-4 text-brand-700" />
+                : <SortDesc className="w-4 h-4 text-brand-700" />
+              }
+            </button>
+            <span className="text-slate-400 font-medium">
+              {filteredGbStudents.length}/{enrolledStudents.length} mahasiswa
+            </span>
+          </div>
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
@@ -901,8 +993,14 @@ export default function GradebookPage({ initialClassId }) {
                     Belum ada mahasiswa yang terdaftar di kelas perkuliahan ini.
                   </td>
                 </tr>
+              ) : filteredGbStudents.length === 0 ? (
+                <tr>
+                  <td colSpan="11" className="p-8 text-center text-slate-400 italic">
+                    Tidak ada mahasiswa yang cocok dengan pencarian "<strong>{gbSearchQuery}</strong>".
+                  </td>
+                </tr>
               ) : (
-                enrolledStudents.map(item => {
+                filteredGbStudents.map(item => {
                   const g = item.grade;
                   const cpmkPercent = g.nilaiAkhir || 0;
 

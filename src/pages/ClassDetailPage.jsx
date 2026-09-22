@@ -1730,7 +1730,7 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
                 const isEditing = editingMessageId === msg.id;
                 const canModerate = canManageClass;
                 const canDelete = isMyMessage || canModerate;
-                const canEdit = isMyMessage && !msg.isDeleted;
+                const canEdit = isMyMessage;
 
                 return (
                   <div
@@ -1761,7 +1761,7 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
                     </div>
 
                     {/* Tombol Aksi Samping (Edit/Hapus) — tampil saat hover dan touch */}
-                    {!msg.isDeleted && !isEditing && (canEdit || canDelete) && (
+                    {!isEditing && (canEdit || canDelete) && (
                       <div
                         className={`flex flex-col gap-1 self-center shrink-0 transition-opacity duration-150 ${
                           isHovered ? 'opacity-100' : 'opacity-60 sm:opacity-0 hover:opacity-100'
@@ -1799,7 +1799,7 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
                       isMyMessage
                         ? 'bg-brand-800 text-white rounded-br-none'
                         : 'bg-white text-slate-800 border border-slate-200 rounded-bl-none'
-                    } ${msg.isDeleted ? 'opacity-60' : ''}`}>
+                    }`}>
 
                       {/* Header bubble */}
                       <div className={`flex items-center gap-2 pb-1.5 mb-0.5 border-b ${
@@ -1822,13 +1822,13 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
                             {safeFormatDate(msg.createdAt, {
                               day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
                             }) || '—'}
-                            {msg.isEdited && !msg.isDeleted && (
+                            {msg.isEdited && (
                               <span className="ml-1 italic opacity-70"> · Diedit</span>
                             )}
                           </span>
 
                           {/* Tombol aksi langsung di header bubble agar mudah dilihat & diakses */}
-                          {!msg.isDeleted && !isEditing && (
+                          {!isEditing && (
                             <div className="flex items-center gap-1 ml-1">
                               {canEdit && (
                                 <button
@@ -1870,13 +1870,8 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
                         </div>
                       </div>
 
-                      {/* Konten: deleted / sedang diedit / normal */}
-                      {msg.isDeleted ? (
-                        <p className="leading-relaxed pt-0.5 font-normal text-xs italic opacity-60 flex items-center gap-1.5">
-                          <Trash2 className="w-3 h-3 shrink-0 text-rose-400" />
-                          Pesan ini telah dihapus.
-                        </p>
-                      ) : isEditing ? (
+                      {/* Konten: sedang diedit / normal */}
+                      {isEditing ? (
                         <div className="pt-1 space-y-2">
                           <textarea
                             rows="3"

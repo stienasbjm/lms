@@ -51,7 +51,6 @@ export const INITIAL_USERS = [
     uid: 'user-admin-2',
     id: 'user-admin-2',
     email: 'akademik@stienas.ac.id',
-    aliasEmail: 'adminakademik@stienas.ac.id, baa@stienas.ac.id',
     name: 'Admin Bagian Akademik (BAA)',
     role: 'ADMIN_AKADEMIK',
     username: 'akademik',
@@ -734,28 +733,10 @@ export const INITIAL_AUDIT_LOGS = [
   {
     id: 'log-01',
     userId: 'user-admin-1',
-    userName: 'Super Administrator LMS',
+    userName: 'Administrator Sistem',
     role: 'SUPER_ADMIN',
     action: 'SYSTEM_INIT',
     details: 'Inisialisasi sistem LMS STIE Nasional Banjarmasin arsitektur Serverless Jamstack.',
     timestamp: new Date(Date.now() - 3600000 * 24).toISOString()
-  },
-  {
-    id: 'log-02',
-    userId: 'user-dosen-2',
-    userName: 'Dra. Hj. Siti Rahmah, M.Si.',
-    role: 'DOSEN',
-    action: 'CREATE_CLASS',
-    details: 'Membuka kelas baru MNJ301 - Manajemen Keuangan I Kelas A dengan 16 pertemuan otomatis.',
-    timestamp: new Date(Date.now() - 3600000 * 5).toISOString()
-  },
-  {
-    id: 'log-03',
-    userId: 'user-dosen-2',
-    userName: 'Dra. Hj. Siti Rahmah, M.Si.',
-    role: 'DOSEN',
-    action: 'UPDATE_GRADE',
-    details: 'Memperbarui buku nilai kelas perkuliahan.',
-    timestamp: new Date(Date.now() - 3600000).toISOString()
   }
 ];

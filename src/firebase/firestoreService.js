@@ -2758,8 +2758,8 @@ export async function editClassMessage(classId, messageId, newText, user) {
 }
 
 /**
- * Hapus/tarik pesan kelas (oleh pengirim asli atau moderasi Dosen/Admin)
- * Pesan tidak dihapus fisik, melainkan ditandai sebagai deleted (soft delete)
+ * Hapus pesan kelas secara permanen (hard delete).
+ * Pesan dihapus fisik dari array, tidak lagi muncul di chat maupun notifikasi.
  */
 export async function deleteClassMessage(classId, messageId, user) {
   if (!classId || !messageId || !user) return;
@@ -2769,26 +2769,20 @@ export async function deleteClassMessage(classId, messageId, user) {
   const role = (user.role || '').toUpperCase();
   const canModerate = ['SUPER_ADMIN', 'ADMIN', 'ADMIN_AKADEMIK', 'BAA', 'DOSEN'].includes(role);
 
-  const updatedMessages = existing.map(msg => {
-    if (msg.id === messageId) {
-      const isOwner = msg.senderId === userId || 
-                      String(msg.senderId) === String(user.id) || 
-                      String(msg.senderId) === String(user.uid) ||
-                      (user.email && msg.senderEmail === user.email);
-      if (!isOwner && !canModerate) {
-        throw new Error('Anda tidak memiliki wewenang untuk menghapus pesan ini.');
-      }
-      return {
-        ...msg,
-        text: '',
-        isDeleted: true,
-        deletedAt: new Date().toISOString(),
-        deletedByRole: isOwner ? 'SENDER' : role,
-        deletedByName: user.name || user.email || 'Pengguna'
-      };
+  // Cari pesan yang akan dihapus untuk validasi kepemilikan
+  const targetMsg = existing.find(msg => msg.id === messageId);
+  if (targetMsg) {
+    const isOwner = targetMsg.senderId === userId ||
+                    String(targetMsg.senderId) === String(user.id) ||
+                    String(targetMsg.senderId) === String(user.uid) ||
+                    (user.email && targetMsg.senderEmail === user.email);
+    if (!isOwner && !canModerate) {
+      throw new Error('Anda tidak memiliki wewenang untuk menghapus pesan ini.');
     }
-    return msg;
-  });
+  }
+
+  // Hard delete: hapus pesan dari array sepenuhnya
+  const updatedMessages = existing.filter(msg => msg.id !== messageId);
 
   // Simpan ke localStorage
   try { localStorage.setItem(key, JSON.stringify(updatedMessages)); } catch (e) {}
@@ -2862,6 +2856,8 @@ export async function getUserClassNotifications(user, classesList = []) {
     } catch(e) {}
 
     messageMap.forEach(m => {
+      // Hanya tampilkan notifikasi untuk pesan yang belum dihapus
+      if (m.isDeleted) return;
       const isUnread = m.senderId !== userId && !(m.readBy || []).includes(userId);
       allNotifications.push({
         id: m.id,
