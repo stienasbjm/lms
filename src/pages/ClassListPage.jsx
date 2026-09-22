@@ -9,7 +9,6 @@ import {
   getTahunAkademik, 
   getUsers,
   enrollStudent,
-  syncStudentSemesterClasses,
   syncClassesAndStudentsBySemester,
   subscribeToDataSync,
   isClassAssignedToLecturer
@@ -37,7 +36,12 @@ import {
   Trash2,
   Settings,
   Award,
-  Sparkles
+  Sparkles,
+  Search,
+  SortAsc,
+  SortDesc,
+  X,
+  ChevronDown
 } from 'lucide-react';
 
 export default function ClassListPage({ onSelectClass, onNavigate }) {
@@ -54,6 +58,13 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
   const [filterDosenScope, setFilterDosenScope] = useState('ALL'); // 'ALL' | 'MY_CLASSES'
   const [filterMhsScope, setFilterMhsScope] = useState('MY_SEMESTER'); // 'MY_SEMESTER' | 'ENROLLED' | 'ALL'
   const [isSyncing, setIsSyncing] = useState(false);
+
+  // State Search & Sort Rinci (Admin/BAA + Mahasiswa)
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterDosenId, setFilterDosenId] = useState('ALL');
+  const [filterStatusTA, setFilterStatusTA] = useState('ALL'); // ALL | OPEN | CLOSED
+  const [sortBy, setSortBy] = useState('namaMk'); // namaMk | semester | dosen | kuota | hari
+  const [sortOrder, setSortOrder] = useState('asc');
 
   // Modal Buka Kelas Baru (Khusus Admin BAA)
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -120,22 +131,9 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
         }));
       }
 
-      // Auto-sync kelas untuk mahasiswa jika belum terdaftar pada kelas semester aktifnya
-      if (isMahasiswa && user && c && c.length > 0) {
-        const uId = user.uid || user.id;
-        const enrolledCount = c.filter(cls => (cls.enrolledStudents || []).includes(uId)).length;
-        if (enrolledCount === 0) {
-          try {
-            const syncRes = await syncStudentSemesterClasses(user);
-            if (syncRes && syncRes.classesAdded > 0) {
-              const freshClasses = await getClasses();
-              setClasses(freshClasses);
-            }
-          } catch (syncErr) {
-            console.warn("Auto-sync kelas mahasiswa notice:", syncErr);
-          }
-        }
-      }
+      // Catatan: Mahasiswa tidak lagi di-auto-enroll saat halaman dimuat.
+      // Mahasiswa mendaftar secara mandiri (KRS Manual) via tombol "Ambil Kelas (KRS)" di setiap card kelas.
+
     } catch (err) {
       console.error(err);
     } finally {
@@ -351,23 +349,6 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
     studentAcademicStanding?.semester || (user?.semester ? Number(user.semester) : 1)
   ) : null;
 
-  // Handler Sinkronisasi Mandiri Paket Semester Mahasiswa
-  const handleSyncMySemesterClasses = async () => {
-    setIsSyncing(true);
-    try {
-      const res = await syncStudentSemesterClasses(user);
-      if (res.newlyEnrolledCount > 0) {
-        showSuccessToast(`Berhasil mengambil ${res.newlyEnrolledCount} kelas paket Semester ${studentCurrentSemester}!`);
-      } else {
-        showSuccessToast(`Seluruh kelas paket Semester ${studentCurrentSemester} sudah terdaftar di akun Anda.`);
-      }
-      await loadData();
-    } catch (err) {
-      showErrorAlert("Gagal Sinkronisasi Kelas", err.message);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
 
   // Handler Sinkronisasi Massal Seluruh Mahasiswa Sesuai Semester (Admin / BAA)
   const handleSyncAllStudentsBySemester = async () => {
@@ -393,9 +374,9 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
     }
   };
 
-  // Filter Kelas berdasarkan Semester dan Peran
+  // Filter & Sort Kelas berdasarkan Semester, Peran, Search, dan Kriteria Rinci
   const filteredClasses = classes.filter(cls => {
-    // 1. Filter Semester
+    // 1. Filter Semester / Tahun Akademik
     if (selectedSemesterId && selectedSemesterId !== 'ALL') {
       const matchTa = cls.tahunAkademikId === selectedSemesterId || 
                       (selectedTa && cls.namaTa === selectedTa.namaTa);
@@ -407,20 +388,86 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
       if (!isClassAssignedToLecturer(cls, user, mks)) return false;
     }
 
-    // 3. Sub-filter Mahasiswa (OBE KRS Rule)
+    // 3. Sub-filter Mahasiswa (OBE KRS Rule + Sembunyikan beda Prodi)
     if (isMahasiswa) {
+      const mk = mks.find(m => m.id === cls.mataKuliahId || m.kodeMk === cls.kodeMk);
+      const sem = Number(mk?.semesterDefault || 1);
+      const isProdiMatch = !mk?.prodiId || !user?.prodiId || mk.prodiId === user.prodiId;
+      
       if (filterMhsScope === 'MY_SEMESTER') {
-        const mk = mks.find(m => m.id === cls.mataKuliahId || m.kodeMk === cls.kodeMk);
-        const sem = Number(mk?.semesterDefault || 1);
-        const isProdiMatch = !mk?.prodiId || !user?.prodiId || mk.prodiId === user.prodiId;
         if (sem !== studentCurrentSemester || !isProdiMatch) return false;
       } else if (filterMhsScope === 'ENROLLED') {
         const isEnrolled = (cls.enrolledStudents || []).includes(user?.uid) || (cls.enrolledStudents || []).includes(user?.id);
         if (!isEnrolled) return false;
+      } else if (filterMhsScope === 'ALL') {
+        // Di tab "Semua Kelas Terbuka", tetap sembunyikan kelas beda prodi
+        if (!isProdiMatch) return false;
+        // Hanya tampilkan kelas yang OPEN dan semester aktif
+        const clsTa = tas.find(t => t.id === cls.tahunAkademikId || t.namaTa === cls.namaTa);
+        if (!clsTa || !clsTa.isActive) return false;
+        if (cls.status && cls.status !== 'OPEN') return false;
+      }
+    }
+
+    // 4. Filter Search (Nama MK + Kode MK + Nama Dosen) — berlaku untuk Admin & Dosen
+    if (searchQuery && searchQuery.trim() !== '') {
+      const q = searchQuery.toLowerCase().trim();
+      const matchName = (cls.namaMk || '').toLowerCase().includes(q);
+      const matchCode = (cls.kodeMk || '').toLowerCase().includes(q);
+      const matchDosen = (cls.namaDosen || '').toLowerCase().includes(q);
+      const matchKelas = (cls.namaKelas || '').toLowerCase().includes(q);
+      if (!matchName && !matchCode && !matchDosen && !matchKelas) return false;
+    }
+
+    // 5. Filter Dosen Pengampu (Admin only)
+    if (isAdmin && filterDosenId && filterDosenId !== 'ALL') {
+      if (cls.dosenId !== filterDosenId) return false;
+    }
+
+    // 6. Filter Status TA: Dibuka (OPEN) / Ditutup (CLOSED) — Admin & Dosen
+    if (filterStatusTA && filterStatusTA !== 'ALL') {
+      const clsTa = tas.find(t => t.id === cls.tahunAkademikId || t.namaTa === cls.namaTa);
+      if (filterStatusTA === 'OPEN') {
+        if (!clsTa || !clsTa.isActive) return false;
+        if (cls.status && cls.status !== 'OPEN') return false;
+      } else if (filterStatusTA === 'CLOSED') {
+        const isClosed = !clsTa || !clsTa.isActive || cls.status === 'CLOSED';
+        if (!isClosed) return false;
       }
     }
 
     return true;
+  }).sort((a, b) => {
+    // Sorting rinci
+    let valA = '', valB = '';
+    if (sortBy === 'namaMk') {
+      valA = (a.namaMk || '').toLowerCase();
+      valB = (b.namaMk || '').toLowerCase();
+    } else if (sortBy === 'semester') {
+      const mkA = mks.find(m => m.id === a.mataKuliahId || m.kodeMk === a.kodeMk);
+      const mkB = mks.find(m => m.id === b.mataKuliahId || m.kodeMk === b.kodeMk);
+      valA = Number(mkA?.semesterDefault || 1);
+      valB = Number(mkB?.semesterDefault || 1);
+      return sortOrder === 'asc' ? valA - valB : valB - valA;
+    } else if (sortBy === 'dosen') {
+      valA = (a.namaDosen || '').toLowerCase();
+      valB = (b.namaDosen || '').toLowerCase();
+    } else if (sortBy === 'kuota') {
+      valA = (a.enrolledStudents || []).length;
+      valB = (b.enrolledStudents || []).length;
+      return sortOrder === 'asc' ? valA - valB : valB - valA;
+    } else if (sortBy === 'hari') {
+      const hariOrder = { Senin: 1, Selasa: 2, Rabu: 3, Kamis: 4, Jumat: 5, Sabtu: 6 };
+      valA = hariOrder[a.hari] || 7;
+      valB = hariOrder[b.hari] || 7;
+      return sortOrder === 'asc' ? valA - valB : valB - valA;
+    } else if (sortBy === 'kodeMk') {
+      valA = (a.kodeMk || '').toLowerCase();
+      valB = (b.kodeMk || '').toLowerCase();
+    }
+    if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+    if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+    return 0;
   });
 
   // Hitungan untuk tab Dosen & Mahasiswa
@@ -435,6 +482,14 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
     const isProdiMatch = !mk?.prodiId || !user?.prodiId || mk.prodiId === user.prodiId;
     return sem === studentCurrentSemester && isProdiMatch;
   }).length;
+  // Hitung kelas terbuka sesuai prodi mahasiswa (untuk tab ALL)
+  const myAllOpenClassesCount = totalClassesInSemester.filter(c => {
+    const mk = mks.find(m => m.id === c.mataKuliahId || m.kodeMk === c.kodeMk);
+    const isProdiMatch = !mk?.prodiId || !user?.prodiId || mk.prodiId === user.prodiId;
+    const clsTa = tas.find(t => t.id === c.tahunAkademikId || t.namaTa === c.namaTa);
+    return isProdiMatch && clsTa?.isActive && (!c.status || c.status === 'OPEN');
+  }).length;
+
 
   if (loading && classes.length === 0) {
     return (
@@ -520,10 +575,10 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
         </div>
       )}
 
-      {/* Banner Sinkronisasi KRS Paket Semester Mahasiswa */}
+      {/* Banner Panduan KRS Mandiri Mahasiswa — Ganti Banner Auto-Sinkronisasi */}
       {isMahasiswa && activeTa && (
         <div className="bg-gradient-to-r from-brand-900 via-indigo-950 to-slate-900 text-white rounded-2xl p-4 shadow-sm border border-brand-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="space-y-1">
+          <div className="space-y-1 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[11px] font-bold flex items-center gap-1">
                 <CheckCircle className="w-3 h-3 text-emerald-400" />
@@ -537,26 +592,22 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
               Paket Kelas Perkuliahan Semester {studentCurrentSemester}
             </h3>
             <p className="text-xs text-slate-300 leading-relaxed max-w-2xl">
-              Sesuai ketentuan kurikulum OBE STIE Nasional, mahasiswa Semester {studentCurrentSemester} otomatis dialokasikan ke mata kuliah paket semester berjalan. Klik tombol sinkronkan di samping untuk mengambil seluruh mata kuliah semester Anda secara otomatis.
+              Sesuai kebijakan KRS STIE Nasional, Anda perlu <strong className="text-emerald-300">mendaftarkan diri secara mandiri</strong> pada setiap kelas yang ingin diambil. 
+              Pilih tab <strong className="text-white">Paket Semester {studentCurrentSemester}</strong> di bawah, lalu klik <strong className="text-emerald-300">"Ambil Kelas (KRS)"</strong> pada setiap mata kuliah yang sesuai dengan semester dan program studi Anda.
             </p>
           </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={handleSyncMySemesterClasses}
-              disabled={isSyncing}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5 cursor-pointer"
-              title={`Sinkronkan seluruh kelas paket Semester ${studentCurrentSemester}`}
-            >
-              <Sparkles className={`w-4 h-4 ${isSyncing ? 'animate-spin text-amber-300' : 'text-amber-300'}`} />
-              <span>{isSyncing ? 'Menyinkronkan...' : `Ambil / Sinkronkan Paket Kelas Sem. ${studentCurrentSemester}`}</span>
-            </button>
+          <div className="flex flex-col items-center gap-1.5 shrink-0 bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-center">
+            <GraduationCap className="w-7 h-7 text-emerald-300" />
+            <span className="text-[11px] font-bold text-white">KRS Mandiri</span>
+            <span className="text-[10px] text-slate-300 leading-tight max-w-[120px]">Pilih & daftarkan kelas Anda</span>
           </div>
         </div>
       )}
 
-      {/* FILTER BAR: FILTER BERDASARKAN SEMESTER / TAHUN AKADEMIK */}
+      {/* FILTER BAR: FILTER & SEARCH RINCI */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+        
+        {/* Row 1: Semester selector + Status badge */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           
           {/* Dropdown Pemilih Semester */}
@@ -605,7 +656,7 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
             </div>
           )}
 
-          {/* Sub-Filter Khusus Mahasiswa */}
+          {/* Sub-Filter Tab Khusus Mahasiswa */}
           {isMahasiswa && (
             <div className="flex flex-wrap items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
               <button
@@ -614,7 +665,7 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
                   filterMhsScope === 'MY_SEMESTER' ? 'bg-white shadow text-brand-800 font-bold' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                Paket Semester {studentCurrentSemester} ({mySemesterClassesCount} Kelas)
+                Paket Semester {studentCurrentSemester} ({mySemesterClassesCount})
               </button>
               <button
                 onClick={() => setFilterMhsScope('ENROLLED')}
@@ -622,7 +673,7 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
                   filterMhsScope === 'ENROLLED' ? 'bg-white shadow text-emerald-800 font-bold' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                Kelas Terdaftar ({myEnrolledClassesCount})
+                Terdaftar ({myEnrolledClassesCount})
               </button>
               <button
                 onClick={() => setFilterMhsScope('ALL')}
@@ -630,11 +681,101 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
                   filterMhsScope === 'ALL' ? 'bg-white shadow text-slate-900 font-bold' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                Semua Kelas Terbuka ({totalClassesInSemester.length})
+                Kelas Terbuka ({myAllOpenClassesCount})
               </button>
             </div>
           )}
+        </div>
 
+        {/* Row 2: Search + Filter Rinci (Admin & Dosen & Mahasiswa) */}
+        <div className="flex flex-col sm:flex-row gap-2">
+          {/* Search Box */}
+          <div className="relative flex-1 min-w-0">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              placeholder={isAdmin ? "Cari mata kuliah, kode MK, nama dosen..." : isDosen ? "Cari mata kuliah atau kode MK..." : "Cari mata kuliah..."}
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full pl-8 pr-8 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-400 transition-all"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Filter Dosen (Admin only) */}
+          {isAdmin && (
+            <select
+              value={filterDosenId}
+              onChange={e => setFilterDosenId(e.target.value)}
+              className="px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer min-w-[160px]"
+            >
+              <option value="ALL">Semua Dosen Pengampu</option>
+              {dosenList.map(d => (
+                <option key={d.uid} value={d.uid}>{d.name}</option>
+              ))}
+            </select>
+          )}
+
+          {/* Filter Status TA (Admin & Dosen) */}
+          {(isAdmin || isDosen) && (
+            <select
+              value={filterStatusTA}
+              onChange={e => setFilterStatusTA(e.target.value)}
+              className="px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer min-w-[150px]"
+            >
+              <option value="ALL">Semua Status TA</option>
+              <option value="OPEN">Dibuka / Aktif BAA</option>
+              <option value="CLOSED">Ditutup BAA</option>
+            </select>
+          )}
+
+          {/* Sort By */}
+          <select
+            value={sortBy}
+            onChange={e => setSortBy(e.target.value)}
+            className="px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer min-w-[130px]"
+          >
+            <option value="namaMk">Urut: Nama MK</option>
+            <option value="kodeMk">Urut: Kode MK</option>
+            <option value="semester">Urut: Semester</option>
+            <option value="dosen">Urut: Nama Dosen</option>
+            <option value="kuota">Urut: Jumlah Mahasiswa</option>
+            <option value="hari">Urut: Hari</option>
+          </select>
+
+          {/* Sort Order Toggle */}
+          <button
+            onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+            title={sortOrder === 'asc' ? 'Urutan A→Z / Terkecil' : 'Urutan Z→A / Terbesar'}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
+          >
+            {sortOrder === 'asc' ? <SortAsc className="w-3.5 h-3.5 text-brand-700" /> : <SortDesc className="w-3.5 h-3.5 text-brand-700" />}
+            <span>{sortOrder === 'asc' ? 'A→Z' : 'Z→A'}</span>
+          </button>
+
+          {/* Reset Filter */}
+          {(searchQuery || filterDosenId !== 'ALL' || filterStatusTA !== 'ALL' || sortBy !== 'namaMk' || sortOrder !== 'asc') && (
+            <button
+              onClick={() => {
+                setSearchQuery('');
+                setFilterDosenId('ALL');
+                setFilterStatusTA('ALL');
+                setSortBy('namaMk');
+                setSortOrder('asc');
+              }}
+              className="flex items-center gap-1 px-3 py-1.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-medium hover:bg-rose-100 transition-colors cursor-pointer shrink-0"
+            >
+              <X className="w-3.5 h-3.5" />
+              Reset
+            </button>
+          )}
         </div>
 
         {/* Notifikasi Kebijakan KRS & Mengulang Mahasiswa */}
@@ -642,16 +783,20 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
           <div className="bg-amber-50/80 border border-amber-200/80 rounded-xl p-3 text-[11px] text-amber-900 flex items-start gap-2.5">
             <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
             <div className="leading-relaxed">
-              <strong className="font-bold text-amber-950">Panduan KRS Mandiri Mahasiswa:</strong> Sistem secara otomatis menampilkan paket kelas sesuai Program Studi dan Semester berjalan Anda ({user?.prodiId || 'Prodi Anda'} • Semester {studentCurrentSemester}).
-              Bagi mahasiswa yang bermaksud <strong className="text-purple-900">mengulang mata kuliah tahun sebelumnya</strong> yang belum lulus, pendaftaran kelas <em>wajib dilakukan melalui Admin / Bagian Administrasi Akademik (BAA)</em>.
+              <strong className="font-bold text-amber-950">Panduan KRS Mandiri:</strong> Tab <strong>"Paket Semester {studentCurrentSemester}"</strong> menampilkan kelas sesuai Program Studi ({user?.prodiId || 'Prodi Anda'}) dan semester berjalan Anda. 
+              Klik <strong>"Ambil Kelas (KRS)"</strong> pada setiap kelas yang ingin diambil.
+              Bagi mahasiswa yang bermaksud <strong className="text-purple-900">mengulang mata kuliah tahun sebelumnya</strong>, pendaftaran kelas <em>wajib dilakukan melalui Admin / BAA</em>.
             </div>
           </div>
         )}
 
         {/* Ringkasan Jumlah Kelas */}
-        <div className="text-[11px] text-slate-500 pt-1 border-t border-slate-100 flex items-center justify-between">
+        <div className="text-[11px] text-slate-500 pt-1 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2">
           <span>
-            Menampilkan <strong>{filteredClasses.length}</strong> kelas perkuliahan untuk semester <strong>{selectedTa ? selectedTa.namaTa : 'Seluruh Semester'}</strong>.
+            Menampilkan <strong>{filteredClasses.length}</strong> kelas
+            {searchQuery && <span className="text-brand-700"> • Hasil pencarian: "<strong>{searchQuery}</strong>"</span>}
+            {filterDosenId !== 'ALL' && <span className="text-blue-700"> • Dosen: <strong>{dosenList.find(d => d.uid === filterDosenId)?.name || filterDosenId}</strong></span>}
+            {filterStatusTA !== 'ALL' && <span className="text-emerald-700"> • Status: <strong>{filterStatusTA === 'OPEN' ? 'Dibuka' : 'Ditutup'}</strong></span>}
           </span>
           {activeTa && selectedSemesterId !== activeTa.id && selectedSemesterId !== 'ALL' && (
             <button
