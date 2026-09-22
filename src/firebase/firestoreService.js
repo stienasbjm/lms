@@ -2493,30 +2493,32 @@ export async function getClassMessages(classId) {
 
   const messageMap = new Map();
 
-  // 1. Ambil dari classItem di STORAGE_KEYS.CLASSES
-  try {
-    const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
-    const classItem = list.find(c => String(c.id) === String(classId) || String(c.uid || '') === String(classId));
-    if (classItem && Array.isArray(classItem.messages)) {
-      classItem.messages.forEach(m => {
-        if (m && m.id) messageMap.set(m.id, m);
-      });
-    }
-  } catch (err) {
-    console.warn("Gagal mengambil pesan dari classItem:", err);
-  }
+  /**
+   * Helper merge: Selalu prioritaskan versi yang lebih baru atau yang sudah dihapus.
+   * Versi dengan isDeleted:true SELALU menang atas versi tanpa isDeleted,
+   * karena tindakan hapus adalah aksi eksplisit user yang harus diprioritaskan.
+   */
+  const mergeMessage = (existing, incoming) => {
+    if (!existing) return incoming;
+    // Jika salah satu versi sudah dihapus, prioritaskan yang dihapus
+    if (incoming.isDeleted && !existing.isDeleted) return incoming;
+    if (existing.isDeleted && !incoming.isDeleted) return existing;
+    // Jika keduanya sama-sama dihapus atau sama-sama tidak dihapus, pilih yang terbaru
+    const existingTime = new Date(existing.deletedAt || existing.updatedAt || existing.createdAt || 0).getTime();
+    const incomingTime = new Date(incoming.deletedAt || incoming.updatedAt || incoming.createdAt || 0).getTime();
+    return incomingTime >= existingTime ? incoming : existing;
+  };
 
-  // 2. Jika real Firebase live, ambil langsung dari Firestore
+  // 1. Ambil dari Firestore (sumber utama, prioritas terendah dalam merge)
   if (isRealFirebaseConfigured() && db) {
     try {
-      // Ambil dari dokumen kelas
       const classDocRef = doc(db, "kelas_kuliah", classId);
       const classDocSnap = await getDoc(classDocRef);
       if (classDocSnap.exists()) {
         const data = classDocSnap.data();
         if (Array.isArray(data.messages)) {
           data.messages.forEach(m => {
-            if (m && m.id) messageMap.set(m.id, m);
+            if (m && m.id) messageMap.set(m.id, mergeMessage(messageMap.get(m.id), m));
           });
         }
       }
@@ -2529,7 +2531,8 @@ export async function getClassMessages(classId) {
             const m = d.data();
             const msgId = m.id || d.id;
             if (msgId) {
-              messageMap.set(msgId, { ...m, id: msgId });
+              const msgWithId = { ...m, id: msgId };
+              messageMap.set(msgId, mergeMessage(messageMap.get(msgId), msgWithId));
             }
           });
         }
@@ -2541,15 +2544,29 @@ export async function getClassMessages(classId) {
     }
   }
 
-  // 3. Gabungkan dengan localStorage cache
+  // 2. Ambil dari classItem di STORAGE_KEYS.CLASSES (override Firestore)
+  try {
+    const list = await getLocal(STORAGE_KEYS.CLASSES, INITIAL_CLASSES);
+    const classItem = list.find(c => String(c.id) === String(classId) || String(c.uid || '') === String(classId));
+    if (classItem && Array.isArray(classItem.messages)) {
+      classItem.messages.forEach(m => {
+        if (m && m.id) messageMap.set(m.id, mergeMessage(messageMap.get(m.id), m));
+      });
+    }
+  } catch (err) {
+    console.warn("Gagal mengambil pesan dari classItem:", err);
+  }
+
+  // 3. Gabungkan dengan localStorage cache (PRIORITAS TERTINGGI — mencerminkan aksi terbaru user)
   try {
     const raw = localStorage.getItem(key);
     if (raw) {
       const localMsgs = JSON.parse(raw);
       if (Array.isArray(localMsgs)) {
         localMsgs.forEach(m => {
-          if (m && m.id && !messageMap.has(m.id)) {
-            messageMap.set(m.id, m);
+          if (m && m.id) {
+            // localStorage selalu override sumber lain karena mencerminkan aksi terbaru
+            messageMap.set(m.id, mergeMessage(messageMap.get(m.id), m));
           }
         });
       }

@@ -1156,7 +1156,7 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
               </div>
             </div>
 
-            <form onSubmit={handleEditSubmit} className="space-y-3 text-xs mt-4">
+            <form onSubmit={handleUpdateClass} className="space-y-3 text-xs mt-4">
               <div>
                 <label className="block text-slate-700 font-semibold mb-1">Mata Kuliah</label>
                 <select

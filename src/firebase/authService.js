@@ -183,22 +183,15 @@ export async function loginUser(identifier, password) {
       }
     }
 
-    // Untuk Admin Akademik (BAA): dukung akademik123 (resmi), baa123, atau akademik
+    // Untuk Admin Akademik (BAA): hanya terima akademik126 (password resmi)
     if (!isPasswordValid && (uRole === 'ADMIN_AKADEMIK' || uRole === 'BAA')) {
-      if (rawPass === 'akademik123' || rawPass === 'baa123' || rawPass === 'akademik' || rawPass === 'baa') {
+      if (rawPass === 'akademik126') {
         isPasswordValid = true;
       }
     }
 
-    // Untuk Dosen demo: dukung dosen123 atau dosen
-    if (!isPasswordValid && uRole === 'DOSEN' && (rawPass === 'dosen123' || rawPass === 'dosen')) {
-      isPasswordValid = true;
-    }
-
-    // Untuk Mahasiswa demo: dukung mhs123 atau mhs2026
-    if (!isPasswordValid && uRole === 'MAHASISWA' && (rawPass === 'mhs123' || rawPass === 'mhs2026')) {
-      isPasswordValid = true;
-    }
+    // Dosen dan Mahasiswa: hanya cocok dengan password yang tersimpan di akun
+    // (tidak ada fallback generik — keamanan lebih ketat)
 
     if (!isPasswordValid) {
       throw new Error("Kata sandi yang Anda masukkan salah. Silakan periksa kembali kata sandi akun Anda.");
