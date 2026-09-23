@@ -14,8 +14,10 @@ import {
   updateMataKuliah,
   deleteMataKuliah,
   getUsers,
-  subscribeToDataSync
+  subscribeToDataSync,
+  subscribeToFirestore
 } from '../firebase/firestoreService';
+import { isRealFirebaseConfigured } from '../firebase/config';
 import { showConfirmDialog, showSuccessToast, showErrorAlert } from '../utils/alert';
 import { 
   Database, 
@@ -106,18 +108,31 @@ export default function MasterDataPage() {
 
   useEffect(() => {
     loadAll(true);
-    let debounceTimer = null;
-    const unsubscribe = subscribeToDataSync((detail) => {
-      if (detail && detail.key === 'STIE_LMS_LOGS') return;
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        loadAll(false);
-      }, 50);
-    });
-    return () => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      unsubscribe();
-    };
+
+    const cleanups = [];
+
+    if (isRealFirebaseConfigured()) {
+      // Real-time lintas device via Firestore onSnapshot
+      cleanups.push(
+        subscribeToFirestore('tahun_akademik', () => loadAll(false)),
+        subscribeToFirestore('mata_kuliah', () => loadAll(false)),
+        subscribeToFirestore('users', () => loadAll(false))
+      );
+    } else {
+      // Fallback lokal
+      let debounceTimer = null;
+      const unsubscribe = subscribeToDataSync((detail) => {
+        if (detail && detail.key === 'STIE_LMS_LOGS') return;
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => loadAll(false), 50);
+      });
+      cleanups.push(() => {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        unsubscribe();
+      });
+    }
+
+    return () => cleanups.forEach(fn => fn && fn());
   }, [user]);
 
   const handleToggleTaStatus = async (taId) => {

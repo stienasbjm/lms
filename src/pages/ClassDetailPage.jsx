@@ -14,6 +14,7 @@ import {
   deleteMeetingMaterial,
   getTahunAkademik,
   subscribeToDataSync,
+  subscribeToFirestore,
   getClassMessages,
   sendClassMessage,
   markClassMessagesAsRead,
@@ -22,6 +23,7 @@ import {
   deleteClassMessage,
   generateDefault16Meetings
 } from '../firebase/firestoreService';
+import { isRealFirebaseConfigured } from '../firebase/config';
 import ManageClassStudentsModal from '../components/classes/ManageClassStudentsModal';
 import { compressImageIfNeeded, formatBytes } from '../utils/imageCompressor';
 import { 
@@ -374,28 +376,53 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
       loadMessages();
     }, intervalTime);
 
-    let debounceTimer = null;
-    const unsubscribe = subscribeToDataSync((detail) => {
-      // Abaikan sinkronisasi audit logs agar tidak memicu re-render
-      if (detail && detail.key === 'STIE_LMS_LOGS') return;
-      if (detail && (
-        detail.key === `STIE_LMS_CLASS_MESSAGES_${classId}` || 
-        detail.key === 'STIE_LMS_NEW_MESSAGE_NOTIFICATION' ||
-        detail.key === 'STIE_LMS_CLASSES'
-      )) {
-        loadMessages();
-      }
-      if (detail && detail.key && !['STIE_LMS_CLASSES', 'STIE_LMS_USERS', 'STIE_LMS_TA'].includes(detail.key)) return;
+    const cleanups = [];
 
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        loadClass(false);
-      }, 50);
-    });
+    if (isRealFirebaseConfigured()) {
+      // Real-time listener lintas device untuk data kelas ini
+      cleanups.push(
+        subscribeToFirestore('kelas_kuliah', (items) => {
+          const updated = items.find(c => String(c.id) === String(classId) || String(c.uid || '') === String(classId));
+          if (updated) {
+            setClassData(prev => {
+              // Jangan overwrite jika tidak ada perubahan substantif
+              if (JSON.stringify(prev?.meetings) === JSON.stringify(updated.meetings) &&
+                  JSON.stringify(prev?.enrolledStudents) === JSON.stringify(updated.enrolledStudents)) {
+                return prev;
+              }
+              return { ...(prev || {}), ...updated };
+            });
+          }
+        }),
+        subscribeToFirestore('users', () => loadClass(false)),
+        subscribeToFirestore('tahun_akademik', () => loadClass(false))
+      );
+    } else {
+      // Fallback lokal: hanya dalam satu browser
+      let debounceTimer = null;
+      const unsubscribe = subscribeToDataSync((detail) => {
+        if (detail && detail.key === 'STIE_LMS_LOGS') return;
+        if (detail && (
+          detail.key === `STIE_LMS_CLASS_MESSAGES_${classId}` || 
+          detail.key === 'STIE_LMS_NEW_MESSAGE_NOTIFICATION' ||
+          detail.key === 'STIE_LMS_CLASSES'
+        )) {
+          loadMessages();
+        }
+        if (detail && detail.key && !['STIE_LMS_CLASSES', 'STIE_LMS_USERS', 'STIE_LMS_TA'].includes(detail.key)) return;
+
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => loadClass(false), 50);
+      });
+      cleanups.push(() => {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        unsubscribe();
+      });
+    }
+
     return () => {
       clearInterval(pollInterval);
-      if (debounceTimer) clearTimeout(debounceTimer);
-      unsubscribe();
+      cleanups.forEach(fn => fn && fn());
     };
   }, [classId, user, activeMainTab]);
 

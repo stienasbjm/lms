@@ -8,6 +8,7 @@ import {
   recordUserActivity 
 } from '../firebase/authService';
 import { isRealFirebaseConfigured } from '../firebase/config';
+import { subscribeToDocFirestore } from '../firebase/firestoreService';
 import { INITIAL_USERS } from '../utils/seedData';
 import SessionTimeoutModal from '../components/common/SessionTimeoutModal';
 import { showErrorAlert, showInfoToast } from '../utils/alert';
@@ -191,6 +192,37 @@ export function AuthProvider({ children }) {
     window.addEventListener('storage', handleSync);
     return () => window.removeEventListener('storage', handleSync);
   }, []);
+
+  // Firestore real-time listener untuk profil user yang sedang login (lintas device)
+  useEffect(() => {
+    if (!user || !isRealFirebaseConfigured()) return;
+
+    const uid = user.uid || user.id;
+    if (!uid) return;
+
+    const unsubscribe = subscribeToDocFirestore('users', uid, (updatedProfile) => {
+      if (!updatedProfile) return;
+
+      // Jika akun dinonaktifkan oleh admin dari device lain, logout otomatis
+      if (updatedProfile.isActive === false && user.isActive !== false) {
+        handleLogout(false);
+        showErrorAlert(
+          'Akun Dinonaktifkan',
+          'Akun Anda telah dinonaktifkan oleh Administrator. Silakan hubungi BAA/Admin untuk informasi lebih lanjut.'
+        );
+        return;
+      }
+
+      // Update profil user jika ada perubahan dari device lain
+      setUser(prev => {
+        const merged = { ...(prev || {}), ...updatedProfile };
+        localStorage.setItem('STIE_LMS_ACTIVE_USER', JSON.stringify(merged));
+        return merged;
+      });
+    });
+
+    return () => unsubscribe();
+  }, [user?.uid, user?.id]);
 
   const currentRole = (user?.role || '').toUpperCase();
   const isSuperAdmin = currentRole === 'SUPER_ADMIN' || currentRole === 'ADMIN';

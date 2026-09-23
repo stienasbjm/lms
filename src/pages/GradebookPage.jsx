@@ -8,8 +8,10 @@ import {
   getMataKuliah,
   getProdi,
   subscribeToDataSync,
+  subscribeToFirestore,
   isClassAssignedToLecturer 
 } from '../firebase/firestoreService';
+import { isRealFirebaseConfigured } from '../firebase/config';
 import { 
   calculateFinalGrade, 
   getGradeBadgeColor, 
@@ -130,18 +132,31 @@ export default function GradebookPage({ initialClassId }) {
 
   useEffect(() => {
     loadData(true);
-    let debounceTimer = null;
-    const unsubscribe = subscribeToDataSync((detail) => {
-      if (detail && detail.key === 'STIE_LMS_LOGS') return;
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        loadData(false);
-      }, 50);
-    });
-    return () => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      unsubscribe();
-    };
+
+    const cleanups = [];
+
+    if (isRealFirebaseConfigured()) {
+      // Real-time lintas device via Firestore onSnapshot
+      cleanups.push(
+        subscribeToFirestore('kelas_kuliah', () => loadData(false)),
+        subscribeToFirestore('users', () => loadData(false)),
+        subscribeToFirestore('tahun_akademik', () => loadData(false))
+      );
+    } else {
+      // Fallback lokal
+      let debounceTimer = null;
+      const unsubscribe = subscribeToDataSync((detail) => {
+        if (detail && detail.key === 'STIE_LMS_LOGS') return;
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => loadData(false), 50);
+      });
+      cleanups.push(() => {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        unsubscribe();
+      });
+    }
+
+    return () => cleanups.forEach(fn => fn && fn());
   }, [user]);
 
   const activeTa = tas.find(t => t.isActive);

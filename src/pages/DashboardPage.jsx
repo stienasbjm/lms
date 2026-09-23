@@ -8,8 +8,10 @@ import {
   getAuditLogs,
   calculateLecturersActivityScores,
   subscribeToDataSync,
+  subscribeToFirestore,
   isClassAssignedToLecturer
 } from '../firebase/firestoreService';
+import { isRealFirebaseConfigured } from '../firebase/config';
 import { 
   BookOpen, 
   Users, 
@@ -63,17 +65,31 @@ export default function DashboardPage({ onNavigate }) {
 
   useEffect(() => {
     loadData(true);
-    let debounceTimer = null;
-    const unsubscribe = subscribeToDataSync(() => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        loadData(false);
-      }, 50);
-    });
-    return () => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      unsubscribe();
-    };
+
+    const cleanups = [];
+
+    if (isRealFirebaseConfigured()) {
+      // Real-time listeners lintas device via Firestore onSnapshot
+      cleanups.push(
+        subscribeToFirestore('kelas_kuliah', () => loadData(false)),
+        subscribeToFirestore('users', () => loadData(false)),
+        subscribeToFirestore('mata_kuliah', () => loadData(false)),
+        subscribeToFirestore('tahun_akademik', () => loadData(false))
+      );
+    } else {
+      // Fallback lokal: hanya bekerja dalam satu browser
+      let debounceTimer = null;
+      const unsubscribe = subscribeToDataSync(() => {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => loadData(false), 50);
+      });
+      cleanups.push(() => {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        unsubscribe();
+      });
+    }
+
+    return () => cleanups.forEach(fn => fn && fn());
   }, [user]);
 
   if (loading && classes.length === 0) {

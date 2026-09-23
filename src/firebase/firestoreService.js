@@ -16,7 +16,8 @@ import {
   query, 
   where, 
   orderBy, 
-  serverTimestamp 
+  serverTimestamp,
+  onSnapshot 
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage, isRealFirebaseConfigured } from "./config.js";
@@ -70,6 +71,82 @@ export function subscribeToDataSync(callback) {
     window.removeEventListener(DATA_SYNC_EVENT, handleCustom);
     window.removeEventListener('storage', handleStorage);
   };
+}
+
+/**
+ * Real-time Firestore listener untuk koleksi — bekerja LINTAS device/browser.
+ * Gunakan ini sebagai pengganti subscribeToDataSync() untuk sinkronisasi real-time.
+ * @param {string} collectionName - Nama koleksi Firestore (mis. 'kelas_kuliah', 'users')
+ * @param {function} callback - Dipanggil setiap kali data berubah, menerima array dokumen
+ * @param {object} [queryOptions] - Opsional: { orderByField, orderDir } untuk sorting
+ * @returns {function} Fungsi unsubscribe untuk cleanup
+ */
+export function subscribeToFirestore(collectionName, callback, queryOptions = {}) {
+  if (!isRealFirebaseConfigured() || !db) return () => {};
+
+  try {
+    let q;
+    if (queryOptions.orderByField) {
+      q = query(
+        collection(db, collectionName),
+        orderBy(queryOptions.orderByField, queryOptions.orderDir || 'asc')
+      );
+    } else {
+      q = collection(db, collectionName);
+    }
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const items = snapshot.docs.map(d => {
+          const data = d.data();
+          if (!data.id && !data.uid) data.id = d.id;
+          if (data.id && !data.uid) data.uid = data.id;
+          if (data.uid && !data.id) data.id = data.uid;
+          return data;
+        });
+        callback(items);
+      },
+      (error) => {
+        console.warn(`[Firestore onSnapshot] Error pada koleksi '${collectionName}':`, error.code || error.message);
+      }
+    );
+    return unsubscribe;
+  } catch (e) {
+    console.warn(`[Firestore subscribeToFirestore] Gagal subscribe ke '${collectionName}':`, e);
+    return () => {};
+  }
+}
+
+/**
+ * Real-time Firestore listener untuk SATU dokumen — bekerja LINTAS device/browser.
+ * @param {string} collectionName - Nama koleksi
+ * @param {string} docId - ID dokumen
+ * @param {function} callback - Dipanggil setiap kali dokumen berubah
+ * @returns {function} Fungsi unsubscribe untuk cleanup
+ */
+export function subscribeToDocFirestore(collectionName, docId, callback) {
+  if (!isRealFirebaseConfigured() || !db || !docId) return () => {};
+
+  try {
+    const unsubscribe = onSnapshot(
+      doc(db, collectionName, String(docId)),
+      (snap) => {
+        if (snap.exists()) {
+          callback({ id: snap.id, uid: snap.id, ...snap.data() });
+        } else {
+          callback(null);
+        }
+      },
+      (error) => {
+        console.warn(`[Firestore onSnapshot doc] Error pada '${collectionName}/${docId}':`, error.code || error.message);
+      }
+    );
+    return unsubscribe;
+  } catch (e) {
+    console.warn(`[Firestore subscribeToDocFirestore] Gagal subscribe:`, e);
+    return () => {};
+  }
 }
 
 export function getCollectionName(key) {
@@ -800,6 +877,13 @@ export async function setTahunAkademikActive(taId, user) {
     isActive: item.id === taId
   }));
   await setLocal(STORAGE_KEYS.TA, updated);
+  // Sync ke Firestore: update status isActive tiap dokumen TA
+  if (isRealFirebaseConfigured() && db) {
+    updated.forEach(item => {
+      setDoc(doc(db, 'tahun_akademik', String(item.id)), item, { merge: true })
+        .catch(e => console.warn('Firestore setTahunAkademikActive warning:', e));
+    });
+  }
   await logAudit(user, 'UPDATE_TA', `Mengaktifkan Tahun Akademik ID: ${taId}`);
   return updated;
 }
@@ -820,6 +904,23 @@ export async function addTahunAkademik(taData, user) {
   }
   list.unshift(newTa);
   await setLocal(STORAGE_KEYS.TA, list);
+  // Sync ke Firestore
+  if (isRealFirebaseConfigured() && db) {
+    try {
+      await setDoc(doc(db, 'tahun_akademik', String(newTa.id)), newTa, { merge: true });
+      // Update status TA lainnya jika baru ini diaktifkan
+      if (newTa.isActive) {
+        list.forEach(t => {
+          if (t.id !== newTa.id) {
+            setDoc(doc(db, 'tahun_akademik', String(t.id)), { isActive: false, status: 'DITUTUP' }, { merge: true })
+              .catch(e => console.warn('Firestore addTahunAkademik deactivate warning:', e));
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('Firestore addTahunAkademik warning:', e);
+    }
+  }
   await logAudit(user, 'CREATE_TA', `Membuka/Menambahkan Semester Baru: ${newTa.namaTa} (${newTa.kodeTa})`);
   return list;
 }
@@ -850,6 +951,13 @@ export async function toggleTahunAkademikStatus(taId, user) {
   });
 
   await setLocal(STORAGE_KEYS.TA, updated);
+  // Sync ke Firestore: update status semua TA yang berubah
+  if (isRealFirebaseConfigured() && db) {
+    updated.forEach(item => {
+      setDoc(doc(db, 'tahun_akademik', String(item.id)), { isActive: item.isActive, status: item.status }, { merge: true })
+        .catch(e => console.warn('Firestore toggleTahunAkademikStatus warning:', e));
+    });
+  }
   await logAudit(
     user, 
     willBeActive ? 'BUKA_SEMESTER' : 'TUTUP_SEMESTER', 
@@ -901,6 +1009,14 @@ export async function addMataKuliah(mkData, user) {
   };
   list.push(newMk);
   await setLocal(STORAGE_KEYS.MK, list);
+  // Sync ke Firestore
+  if (isRealFirebaseConfigured() && db) {
+    try {
+      await setDoc(doc(db, 'mata_kuliah', String(newMk.id)), newMk, { merge: true });
+    } catch (e) {
+      console.warn('Firestore addMataKuliah warning:', e);
+    }
+  }
   await logAudit(user, 'CREATE_MK', `Menambahkan Mata Kuliah ${newMk.kodeMk} - ${newMk.namaMk}`);
   return newMk;
 }
@@ -914,6 +1030,14 @@ export async function updateMataKuliah(mkId, updatedData, user) {
     return item;
   });
   await setLocal(STORAGE_KEYS.MK, updated);
+  // Sync ke Firestore
+  if (isRealFirebaseConfigured() && db) {
+    try {
+      await setDoc(doc(db, 'mata_kuliah', String(mkId)), updatedData, { merge: true });
+    } catch (e) {
+      console.warn('Firestore updateMataKuliah warning:', e);
+    }
+  }
 
   // Jika BAA memperbarui penugasan Dosen pada Mata Kuliah, sinkronkan ke seluruh kelas perkuliahan terkait
   if (updatedData.dosenId) {
@@ -1320,6 +1444,14 @@ export async function resetUserPassword(uid, newPassword, currentUser) {
   });
 
   await setLocal(STORAGE_KEYS.USERS, updated);
+  // Sync password ke Firestore
+  if (isRealFirebaseConfigured() && db) {
+    try {
+      await setDoc(doc(db, 'users', String(uid)), { password: passwordToSet }, { merge: true });
+    } catch (e) {
+      console.warn('Firestore resetUserPassword warning:', e);
+    }
+  }
   await logAudit(
     currentUser, 
     'RESET_PASSWORD', 
@@ -1482,6 +1614,14 @@ export async function toggleUserActive(uid, user) {
     return u;
   });
   await setLocal(STORAGE_KEYS.USERS, updated);
+  // Sync ke Firestore
+  if (isRealFirebaseConfigured() && db) {
+    try {
+      await setDoc(doc(db, 'users', String(uid)), { isActive: statusChangedTo }, { merge: true });
+    } catch (e) {
+      console.warn('Firestore toggleUserActive warning:', e);
+    }
+  }
   await logAudit(user, 'TOGGLE_USER_STATUS', `Mengubah status user ${target.name} menjadi ${statusChangedTo ? 'AKTIF' : 'NON-AKTIF'}`);
   return updated;
 }
@@ -1666,6 +1806,16 @@ export async function createClass(classData, user) {
     }
   } catch (e) {}
   await setLocal(STORAGE_KEYS.CLASSES, list);
+
+  // Sync ke Firestore
+  if (isRealFirebaseConfigured() && db) {
+    try {
+      const cleanDoc = JSON.parse(JSON.stringify(newClass));
+      await setDoc(doc(db, 'kelas_kuliah', String(classId)), cleanDoc, { merge: true });
+    } catch (e) {
+      console.warn('Firestore createClass warning:', e);
+    }
+  }
 
   await logAudit(user, 'CREATE_CLASS', `Membuka kelas ${newClass.namaMk} (${newClass.namaKelas}) dengan otomatisasi 16 pertemuan.`);
   return newClass;

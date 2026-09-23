@@ -11,8 +11,10 @@ import {
   enrollStudent,
   syncClassesAndStudentsBySemester,
   subscribeToDataSync,
+  subscribeToFirestore,
   isClassAssignedToLecturer
 } from '../firebase/firestoreService';
+import { isRealFirebaseConfigured } from '../firebase/config';
 import { calculateAcademicStanding } from '../utils/studentNimHelper';
 import ManageClassStudentsModal from '../components/classes/ManageClassStudentsModal';
 import { showSuccessToast, showErrorAlert, showConfirmDialog } from '../utils/alert';
@@ -145,18 +147,32 @@ export default function ClassListPage({ onSelectClass, onNavigate }) {
 
   useEffect(() => {
     loadData(true);
-    let debounceTimer = null;
-    const unsubscribe = subscribeToDataSync((detail) => {
-      if (detail && detail.key === 'STIE_LMS_LOGS') return;
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        loadData(false);
-      }, 50);
-    });
-    return () => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      unsubscribe();
-    };
+
+    const cleanups = [];
+
+    if (isRealFirebaseConfigured()) {
+      // Real-time lintas device via Firestore onSnapshot
+      cleanups.push(
+        subscribeToFirestore('kelas_kuliah', () => loadData(false)),
+        subscribeToFirestore('mata_kuliah', () => loadData(false)),
+        subscribeToFirestore('tahun_akademik', () => loadData(false)),
+        subscribeToFirestore('users', () => loadData(false))
+      );
+    } else {
+      // Fallback lokal
+      let debounceTimer = null;
+      const unsubscribe = subscribeToDataSync((detail) => {
+        if (detail && detail.key === 'STIE_LMS_LOGS') return;
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => loadData(false), 50);
+      });
+      cleanups.push(() => {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        unsubscribe();
+      });
+    }
+
+    return () => cleanups.forEach(fn => fn && fn());
   }, [user]);
 
   const handleCreateSubmit = async (e) => {
