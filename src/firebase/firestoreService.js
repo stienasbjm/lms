@@ -105,6 +105,24 @@ export function subscribeToFirestore(collectionName, callback, queryOptions = {}
           if (data.uid && !data.id) data.id = data.uid;
           return data;
         });
+
+        // Simpan langsung data terbaru ke localStorage cache agar konsisten di seluruh browser/tab
+        try {
+          const keyMap = {
+            'users': STORAGE_KEYS.USERS,
+            'kelas_kuliah': STORAGE_KEYS.CLASSES,
+            'mata_kuliah': STORAGE_KEYS.MK,
+            'tahun_akademik': STORAGE_KEYS.TA,
+            'prodi': STORAGE_KEYS.PRODI,
+            'fakultas': STORAGE_KEYS.FAKULTAS
+          };
+          const storageKey = keyMap[collectionName];
+          if (storageKey && typeof localStorage !== 'undefined' && items.length > 0) {
+            localStorage.setItem(storageKey, JSON.stringify(items));
+            notifyDataChange(storageKey, items);
+          }
+        } catch (e) {}
+
         callback(items);
       },
       (error) => {
@@ -301,41 +319,42 @@ export async function getLocal(key, initial = []) {
             } catch(e) {}
           }
 
-          // Gabungkan remoteItems dan localItems (pertahankan data lokal baru yang belum sempat tersinkron)
+          // Gabungkan remoteItems dan localItems (Firestore selalu otoritatif / data terbaru dari cloud)
           let finalItems = remoteItems;
           if (Array.isArray(localItems) && localItems.length > 0) {
             const itemMap = new Map();
-            // Masukkan data lokal terlebih dahulu
+            // Masukkan data lokal terlebih dahulu sebagai fallback
             localItems.forEach(item => {
               const id = item.uid || item.id || item.email || item.kodeMk || item.kodeTa;
               if (id) itemMap.set(String(id), item);
             });
-            // Update / gabungkan dengan data dari Firestore (UTAMAKAN modifikasi lokal terbaru)
+            // Update dengan data dari Firestore (FIRESTORE SELALU MENANG / OTORITATIF)
             remoteItems.forEach(item => {
               const id = item.uid || item.id || item.email || item.kodeMk || item.kodeTa;
               if (id) {
-                // Jangan masukkan item pengguna yang telah terhapus
                 if (key === STORAGE_KEYS.USERS && isUserDeleted(item, deletedIds)) {
                   return;
                 }
                 const existing = itemMap.get(String(id));
                 if (existing) {
-                  // Jika item memiliki array meetings, merge tiap pertemuan agar isTaskOpen, isOpen, dan bahan ajar lokal tidak tertimpa
-                  let mergedMeetings = existing.meetings || item.meetings;
-                  if (Array.isArray(existing.meetings) && Array.isArray(item.meetings)) {
-                    mergedMeetings = existing.meetings.map(localM => {
-                      const remoteM = item.meetings.find(rm => Number(rm.pertemuanKe) === Number(localM.pertemuanKe));
-                      return { ...(remoteM || {}), ...localM };
-                    });
-                  }
-                  // Data lokal (existing) berada setelah remote (item) agar perubahan lokal tetap aktif
-                  itemMap.set(String(id), { ...item, ...existing, meetings: mergedMeetings });
+                  let mergedMeetings = item.meetings || existing.meetings;
+                  // Remote (item) berada setelah local (existing) agar perubahan cloud selalu aktif di semua device
+                  itemMap.set(String(id), { ...existing, ...item, meetings: mergedMeetings });
                 } else {
                   itemMap.set(String(id), item);
                 }
               }
             });
-            finalItems = Array.from(itemMap.values());
+            // Pastikan item yang sudah tidak ada di Firestore dihapus dari cache (kecuali akun admin inti)
+            finalItems = Array.from(itemMap.values()).filter(item => {
+              const id = item.uid || item.id || item.email || item.kodeMk || item.kodeTa;
+              const existsInRemote = remoteItems.some(r => (r.uid || r.id || r.email || r.kodeMk || r.kodeTa) === id);
+              if (key === STORAGE_KEYS.USERS) {
+                if (item.role === 'SUPER_ADMIN' || item.role === 'ADMIN_AKADEMIK') return true;
+                return existsInRemote && !isUserDeleted(item, deletedIds);
+              }
+              return existsInRemote;
+            });
           }
 
           // Integrasikan konfigurasi pertemuan (meetingConfigs) secara otoritatif pada kelas perkuliahan
@@ -1751,7 +1770,8 @@ export async function syncClassMeetingsToFirestore(classItem) {
       if (docId) {
         await setDoc(doc(db, "kelas_kuliah", docId), {
           meetings: classItem.meetings,
-          enrolledStudents: Array.isArray(classItem.enrolledStudents) ? classItem.enrolledStudents : []
+          enrolledStudents: Array.isArray(classItem.enrolledStudents) ? classItem.enrolledStudents : [],
+          grades: classItem.grades || {}
         }, { merge: true });
       }
     } catch (fsErr) {
@@ -1952,6 +1972,18 @@ export async function enrollStudent(classId, mhsId, user, options = {}) {
   classItem.enrolledStudents.push(mhsId);
   await setLocal(STORAGE_KEYS.CLASSES, list);
 
+  // Sync perubahan pendaftaran ke Firestore
+  if (isRealFirebaseConfigured() && db) {
+    try {
+      const docId = String(classItem.uid || classItem.id);
+      await setDoc(doc(db, "kelas_kuliah", docId), {
+        enrolledStudents: classItem.enrolledStudents
+      }, { merge: true });
+    } catch (e) {
+      console.warn("Firestore enrollStudent sync error:", e);
+    }
+  }
+
   const studentLabel = student?.name ? `${student.name} (${student.nim || student.username || mhsId})` : mhsId;
   const controllerPrefix = isActorAdminOrBaa 
     ? `${actorRole === 'SUPER_ADMIN' || actorRole === 'ADMIN' ? 'Super Admin' : 'Admin BAA'} (${user?.name || 'Admin'}) mendaftarkan secara manual` 
@@ -1974,6 +2006,18 @@ export async function unenrollStudent(classId, mhsId, user) {
 
   classItem.enrolledStudents = classItem.enrolledStudents.filter(id => String(id) !== String(mhsId));
   await setLocal(STORAGE_KEYS.CLASSES, list);
+
+  // Sync perubahan pengeluaran mahasiswa ke Firestore
+  if (isRealFirebaseConfigured() && db) {
+    try {
+      const docId = String(classItem.uid || classItem.id);
+      await setDoc(doc(db, "kelas_kuliah", docId), {
+        enrolledStudents: classItem.enrolledStudents
+      }, { merge: true });
+    } catch (e) {
+      console.warn("Firestore unenrollStudent sync error:", e);
+    }
+  }
 
   const student = users.find(u => String(u.uid || u.id) === String(mhsId));
   const studentLabel = student?.name ? `${student.name} (${student.nim || student.username || mhsId})` : mhsId;
@@ -2459,6 +2503,18 @@ export async function updateStudentGrade(classId, mhsId, scores, user) {
   };
 
   await setLocal(STORAGE_KEYS.CLASSES, list);
+
+  // Sync nilai mahasiswa ke Firestore agar sinkron di semua browser
+  if (isRealFirebaseConfigured() && db) {
+    try {
+      const docId = String(classItem.uid || classItem.id);
+      await setDoc(doc(db, "kelas_kuliah", docId), {
+        grades: classItem.grades
+      }, { merge: true });
+    } catch (e) {
+      console.warn("Firestore updateStudentGrade sync error:", e);
+    }
+  }
   await logAudit(user, 'UPDATE_GRADE', `Memperbarui nilai akhir OBE mahasiswa ${mhs.name || mhsId} di kelas ${classItem.namaMk}: ${calculated.gradeLabel || calculated.nilaiHuruf}`);
   return classItem.grades[mhsId];
 }

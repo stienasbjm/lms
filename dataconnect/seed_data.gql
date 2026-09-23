@@ -1,0 +1,22 @@
+mutation CreateSeedData @transaction {
+  user_insertMany(data: [
+    {name: "Alice Smith", email: "alice@company.com", role: "Manager", department: "Engineering"},
+    {name: "Bob Jones", email: "bob@company.com", role: "Engineer", department: "Engineering"},
+    {name: "Charlie Brown", email: "charlie@company.com", role: "Designer", department: "Design"}
+  ])
+  offboardingProcess_insertMany(data: [
+    {status: "In Progress", startDate: "2023-10-01", exitDate: "2023-11-01", employee: {id: "00000000-0000-0000-0000-000000000001"}},
+    {status: "Completed", startDate: "2023-09-01", exitDate: "2023-10-01", employee: {id: "00000000-0000-0000-0000-000000000002"}}
+  ])
+  task_insertMany(data: [
+    {title: "Hand over project docs", status: "Pending", dueDate: "2023-10-25", offboardingProcess: {id: "00000000-0000-0000-0000-000000000001"}},
+    {title: "Return hardware", status: "Done", dueDate: "2023-09-28", offboardingProcess: {id: "00000000-0000-0000-0000-000000000002"}}
+  ])
+  asset_insertMany(data: [
+    {name: "MacBook Pro", type: "Laptop", serialNumber: "SN123456", isReturned: false, offboardingProcess: {id: "00000000-0000-0000-0000-000000000001"}},
+    {name: "Magic Mouse", type: "Peripheral", serialNumber: "SN789012", isReturned: true, offboardingProcess: {id: "00000000-0000-0000-0000-000000000002"}}
+  ])
+  knowledgeTransfer_insertMany(data: [
+    {topic: "API Architecture", documentUrl: "https://docs.example.com/api", summary: "Overview of current microservices.", offboardingProcess: {id: "00000000-0000-0000-0000-000000000001"}}
+  ])
+}

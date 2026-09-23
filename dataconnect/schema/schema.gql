@@ -1,0 +1,38 @@
+type User @table {
+  name: String!
+  email: String!
+  role: String!
+  department: String!
+  manager: User
+}
+
+type OffboardingProcess @table {
+  status: String!
+  startDate: Date!
+  exitDate: Date!
+  employee: User!
+}
+
+type Task @table {
+  title: String!
+  status: String!
+  dueDate: Date!
+  description: String
+  assignedTo: User
+  offboardingProcess: OffboardingProcess!
+}
+
+type Asset @table {
+  name: String!
+  type: String!
+  serialNumber: String
+  isReturned: Boolean
+  offboardingProcess: OffboardingProcess!
+}
+
+type KnowledgeTransfer @table {
+  topic: String!
+  documentUrl: String!
+  summary: String
+  offboardingProcess: OffboardingProcess!
+}

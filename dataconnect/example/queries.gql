@@ -1,0 +1,61 @@
+mutation CreateAllDemoData @transaction @auth(level: USER) {
+  user_insert(data: {id_expr: "auth.uid", name: "Employee Name", email: "employee@example.com", role: "Employee", department: "Engineering"})
+  
+  op: offboardingProcess_insert(data: {
+    status: "Active",
+    startDate: "2023-01-01",
+    exitDate: "2023-12-31",
+    employee: {id_expr: "auth.uid"}
+  })
+  
+  asset_insert(data: {
+    name: "Laptop",
+    type: "Hardware",
+    offboardingProcess: {id_expr: "response.op.id"}
+  })
+  
+  task_insert(data: {
+    title: "Handover Project",
+    status: "Pending",
+    dueDate: "2023-12-30",
+    offboardingProcess: {id_expr: "response.op.id"}
+  })
+  
+  kt: knowledgeTransfer_insert(data: {
+    topic: "Architecture",
+    documentUrl: "https://docs.example.com",
+    offboardingProcess: {id_expr: "response.op.id"}
+  })
+}
+
+mutation UpdateUser @auth(level: USER) {
+  user_update(key: {id_expr: "auth.uid"}, data: {name: "Updated Name"})
+}
+
+mutation DeleteKnowledgeTransfer($id: UUID!) @auth(level: USER) {
+  knowledgeTransfer_delete(key: {id: $id})
+}
+
+query GetUser @auth(level: USER) {
+  user(key: {id_expr: "auth.uid"}) {
+    name
+    email
+  }
+}
+
+query ListMyOffboardingTasks @auth(level: USER) {
+  offboardingProcesses(where: {employee: {id: {eq_expr: "auth.uid"}}}) {
+    status
+    tasks_on_offboardingProcess {
+      title
+      dueDate
+    }
+  }
+}
+
+query PublicAssetCatalog @auth(level: PUBLIC, insecureReason: "Asset catalog is intended for public directory access.") {
+  assets {
+    name
+    type
+  }
+}

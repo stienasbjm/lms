@@ -385,9 +385,7 @@ export default function ClassDetailPage({ classId, onBack, initialTab = 'MEETING
           const updated = items.find(c => String(c.id) === String(classId) || String(c.uid || '') === String(classId));
           if (updated) {
             setClassData(prev => {
-              // Jangan overwrite jika tidak ada perubahan substantif
-              if (JSON.stringify(prev?.meetings) === JSON.stringify(updated.meetings) &&
-                  JSON.stringify(prev?.enrolledStudents) === JSON.stringify(updated.enrolledStudents)) {
+              if (prev && JSON.stringify(prev) === JSON.stringify(updated)) {
                 return prev;
               }
               return { ...(prev || {}), ...updated };

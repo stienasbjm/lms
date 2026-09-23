@@ -59,22 +59,13 @@ export async function loginUser(identifier, password) {
   }
 
   const userMap = new Map();
+  // 1. Baseline: INITIAL_USERS
   INITIAL_USERS.forEach(u => {
     const key = u.uid || u.id || u.email;
     if (key) userMap.set(String(key).toLowerCase(), { ...u });
   });
 
-  if (Array.isArray(remoteUsers)) {
-    remoteUsers.forEach(u => {
-      const key = u.uid || u.id || u.email;
-      if (key) {
-        const existing = userMap.get(String(key).toLowerCase());
-        userMap.set(String(key).toLowerCase(), { ...(existing || {}), ...u });
-      }
-    });
-  }
-
-  // Timpa/gabungkan dengan data dari localStorage jika ada modifikasi
+  // 2. Cache lokal sebagai fallback
   try {
     const stored = localStorage.getItem('STIE_LMS_USERS');
     if (stored) {
@@ -90,6 +81,17 @@ export async function loginUser(identifier, password) {
       }
     }
   } catch (e) {}
+
+  // 3. Data terbaru dari Cloud Firestore (OTORITATIF - menimpa cache lokal lama)
+  if (Array.isArray(remoteUsers) && remoteUsers.length > 0) {
+    remoteUsers.forEach(u => {
+      const key = u.uid || u.id || u.email;
+      if (key) {
+        const existing = userMap.get(String(key).toLowerCase());
+        userMap.set(String(key).toLowerCase(), { ...(existing || {}), ...u });
+      }
+    });
+  }
 
   let combinedUsers = Array.from(userMap.values());
 
