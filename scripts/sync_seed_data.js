@@ -36,7 +36,7 @@ async function run() {
       name: u.name || '',
       role: u.role || 'MAHASISWA',
       username: u.username || (u.email ? u.email.split('@')[0] : id),
-      password: u.password || (u.role === 'SUPER_ADMIN' ? 'admin126' : (u.role === 'ADMIN_AKADEMIK' ? 'akademik123' : (u.role === 'DOSEN' ? 'stienas2026' : 'stienas2026'))),
+      password: u.role === 'SUPER_ADMIN' ? 'admin126' : (u.role === 'ADMIN_AKADEMIK' ? 'akademik123' : (u.role === 'DOSEN' ? 'stienas2026' : 'mhs123')),
       nim: u.nim ? String(u.nim).trim() : '',
       nidn: u.nidn ? String(u.nidn).trim() : '',
       ...(u.angkatan ? { angkatan: Number(u.angkatan) } : {}),

@@ -12,6 +12,16 @@ dist
 dist-ssr
 *.local
 
+# Environment & Secrets (NEVER COMMIT)
+.env
+.env.*
+!.env.example
+
+# Backups & Data Dumps
+firebase-backup/
+*.backup
+*.dump
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -23,3 +33,4 @@ dist-ssr
 *.sln
 *.sw?
 scratch/
+
